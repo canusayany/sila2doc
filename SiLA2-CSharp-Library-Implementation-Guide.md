@@ -1,6 +1,6 @@
 # SiLA 2 C# 库实现指南
 
-版本 1.0 | 基于 SiLA 2 标准 v1.1
+版本 1.1 | 基于 SiLA 2 标准 v1.1 | 包含转换工具实现
 
 ---
 
@@ -799,9 +799,431 @@ private Metadata CreateAuthMetadata(string accessToken)
 
 ---
 
-## 12. 静态代码生成
+## 12. 特性定义转换工具
 
-### 12.1 Protocol Buffer 文件结构
+### 12.1 XML → Proto 转换器概述
+
+为了简化从 SiLA 特性定义（XML）到 Protocol Buffer 文件的转换过程，建议实现一个专用的转换工具。
+
+**转换流程**：
+```
+SiLA Feature XML → [XSLT] → Protocol Buffer (.proto) → [protoc] → C# 代码
+```
+
+### 12.2 转换器核心实现
+
+#### 基于 XSLT 的转换
+
+SiLA 官方提供了 XSLT 转换模板，位于 `sila_base/xslt/` 目录：
+
+| 文件 | 用途 |
+|------|------|
+| `fdl2proto.xsl` | 主转换文件，协调整个转换过程 |
+| `fdl2proto-messages.xsl` | 生成 Protocol Buffer 消息定义 |
+| `fdl2proto-service.xsl` | 生成 gRPC 服务定义 |
+| `fdl-validation.xsl` | 验证 XML 是否符合 SiLA 规范 |
+
+#### C# 转换器实现
+
+```csharp
+using System;
+using System.IO;
+using System.Xml;
+using System.Xml.Xsl;
+
+public static class SiLAConverter
+{
+    private static readonly string XsltPath = "xslt/fdl2proto.xsl";
+    
+    /// <summary>
+    /// 将 SiLA XML 文件转换为 Proto 文件
+    /// </summary>
+    public static bool ConvertXmlToProto(string xmlPath, string protoPath)
+    {
+        try
+        {
+            // 加载 XSLT 转换器
+            var xslt = new XslCompiledTransform();
+            var settings = new XsltSettings(enableDocumentFunction: true, enableScript: true);
+            xslt.Load(XsltPath, settings, new XmlUrlResolver());
+            
+            // 创建输出目录
+            Directory.CreateDirectory(Path.GetDirectoryName(protoPath) ?? ".");
+            
+            // 执行转换
+            using (var writer = new StreamWriter(protoPath))
+            {
+                xslt.Transform(xmlPath, null, writer);
+            }
+            
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"转换失败: {ex.Message}");
+            return false;
+        }
+    }
+    
+    /// <summary>
+    /// 从内存 XML 字符串转换为 Proto 字符串（运行时动态转换）
+    /// </summary>
+    public static string ConvertXmlStringToProto(string xmlContent)
+    {
+        var xslt = new XslCompiledTransform();
+        var settings = new XsltSettings(enableDocumentFunction: true, enableScript: true);
+        xslt.Load(XsltPath, settings, new XmlUrlResolver());
+        
+        using (var stringReader = new StringReader(xmlContent))
+        using (var xmlReader = XmlReader.Create(stringReader))
+        using (var stringWriter = new StringWriter())
+        {
+            xslt.Transform(xmlReader, null, stringWriter);
+            return stringWriter.ToString();
+        }
+    }
+    
+    /// <summary>
+    /// 批量转换多个特性定义
+    /// </summary>
+    public static Dictionary<string, string> ConvertXmlStringsToProto(
+        Dictionary<string, string> xmlContents)
+    {
+        var results = new Dictionary<string, string>();
+        
+        foreach (var kvp in xmlContents)
+        {
+            try
+            {
+                results[kvp.Key] = ConvertXmlStringToProto(kvp.Value);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"{kvp.Key} 转换失败: {ex.Message}");
+                results[kvp.Key] = string.Empty;
+            }
+        }
+        
+        return results;
+    }
+}
+```
+
+### 12.3 XML Schema 验证
+
+在转换前验证 XML 文件是否符合 SiLA 规范：
+
+```csharp
+public static bool ValidateXml(string xmlPath)
+{
+    try
+    {
+        var settings = new XmlReaderSettings();
+        
+        // 添加 SiLA Feature Definition Schema
+        if (File.Exists("schema/FeatureDefinition.xsd"))
+        {
+            settings.Schemas.Add(null, "schema/FeatureDefinition.xsd");
+            settings.ValidationType = ValidationType.Schema;
+            settings.ValidationEventHandler += (sender, e) =>
+            {
+                Console.WriteLine($"验证错误: {e.Message}");
+            };
+        }
+        
+        using (var reader = XmlReader.Create(xmlPath, settings))
+        {
+            while (reader.Read()) { }
+        }
+        
+        return true;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"XML 验证失败: {ex.Message}");
+        return false;
+    }
+}
+```
+
+### 12.4 Proto 到 C# 代码编译
+
+使用 `protoc` 编译器（通过 Grpc.Tools NuGet 包提供）：
+
+```csharp
+public static bool CompileProtoToCSharp(string protoPath, string outputDir)
+{
+    try
+    {
+        // 查找 protoc.exe（来自 Grpc.Tools NuGet 包）
+        var protocPath = FindProtocPath();
+        if (string.IsNullOrEmpty(protocPath))
+        {
+            Console.WriteLine("找不到 protoc.exe，请安装 Grpc.Tools");
+            return false;
+        }
+        
+        Directory.CreateDirectory(outputDir);
+        
+        // 查找 gRPC C# 插件
+        var grpcPluginPath = FindGrpcPluginPath();
+        
+        // 构建命令参数
+        var args = $"--csharp_out={outputDir} " +
+                  $"-I . -I protobuf " +
+                  $"{protoPath}";
+        
+        if (!string.IsNullOrEmpty(grpcPluginPath))
+        {
+            args += $" --grpc_out={outputDir} " +
+                   $"--plugin=protoc-gen-grpc={grpcPluginPath}";
+        }
+        
+        // 执行 protoc
+        var process = new Process
+        {
+            StartInfo = new ProcessStartInfo
+            {
+                FileName = protocPath,
+                Arguments = args,
+                UseShellExecute = false,
+                RedirectStandardOutput = true,
+                RedirectStandardError = true,
+                CreateNoWindow = true
+            }
+        };
+        
+        process.Start();
+        string error = process.StandardError.ReadToEnd();
+        process.WaitForExit();
+        
+        if (process.ExitCode == 0)
+        {
+            Console.WriteLine("C# 代码生成成功");
+            return true;
+        }
+        else
+        {
+            Console.WriteLine($"protoc 编译失败: {error}");
+            return false;
+        }
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"编译失败: {ex.Message}");
+        return false;
+    }
+}
+
+// 辅助方法：查找 NuGet 包中的 protoc.exe
+private static string FindProtocPath()
+{
+    var nugetPackages = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".nuget", "packages", "grpc.tools"
+    );
+    
+    if (Directory.Exists(nugetPackages))
+    {
+        var versions = Directory.GetDirectories(nugetPackages);
+        if (versions.Length > 0)
+        {
+            Array.Sort(versions);
+            var latestVersion = versions[^1];
+            var platform = Environment.Is64BitProcess ? "windows_x64" : "windows_x86";
+            var protocPath = Path.Combine(latestVersion, "tools", platform, "protoc.exe");
+            
+            if (File.Exists(protocPath))
+                return protocPath;
+        }
+    }
+    
+    return null;
+}
+
+private static string FindGrpcPluginPath()
+{
+    var nugetPackages = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.UserProfile),
+        ".nuget", "packages", "grpc.tools"
+    );
+    
+    if (Directory.Exists(nugetPackages))
+    {
+        var versions = Directory.GetDirectories(nugetPackages);
+        if (versions.Length > 0)
+        {
+            Array.Sort(versions);
+            var latestVersion = versions[^1];
+            var platform = Environment.Is64BitProcess ? "windows_x64" : "windows_x86";
+            var pluginPath = Path.Combine(latestVersion, "tools", platform, "grpc_csharp_plugin.exe");
+            
+            if (File.Exists(pluginPath))
+                return pluginPath;
+        }
+    }
+    
+    return null;
+}
+```
+
+### 12.5 完整转换流程
+
+将 XML → Proto → C# 整合为一个完整流程：
+
+```csharp
+/// <summary>
+/// 完整转换流程：XML → Proto → C#
+/// </summary>
+public static void ConvertComplete(string xmlPath, string outputDir)
+{
+    Console.WriteLine($"开始转换: {Path.GetFileName(xmlPath)}");
+    
+    // 创建输出目录结构
+    Directory.CreateDirectory(outputDir);
+    var protoDir = Path.Combine(outputDir, "proto");
+    var csharpDir = Path.Combine(outputDir, "csharp");
+    Directory.CreateDirectory(protoDir);
+    Directory.CreateDirectory(csharpDir);
+    
+    // 步骤 1: 验证 XML
+    if (!ValidateXml(xmlPath))
+    {
+        Console.WriteLine("XML 验证失败，转换已中止");
+        return;
+    }
+    
+    // 步骤 2: XML → Proto
+    var fileName = Path.GetFileNameWithoutExtension(xmlPath);
+    var protoPath = Path.Combine(protoDir, $"{fileName}.proto");
+    
+    if (!ConvertXmlToProto(xmlPath, protoPath))
+    {
+        Console.WriteLine("XML → Proto 转换失败");
+        return;
+    }
+    
+    // 步骤 3: Proto → C#
+    if (CompileProtoToCSharp(protoPath, csharpDir))
+    {
+        Console.WriteLine($"转换完成！");
+        Console.WriteLine($"  Proto 文件: {protoPath}");
+        Console.WriteLine($"  C# 代码: {csharpDir}");
+    }
+}
+```
+
+### 12.6 转换器工具项目结构
+
+建议的项目文件结构（.NET 8）：
+
+```xml
+<!-- SiLAConverter.csproj -->
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Grpc.Net.Client" Version="2.59.0" />
+    <PackageReference Include="Grpc.Tools" Version="2.59.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers</IncludeAssets>
+    </PackageReference>
+    <PackageReference Include="Google.Protobuf" Version="3.25.1" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 复制转换所需文件到输出目录 -->
+    <None Update="xslt/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="protobuf/**/*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="schema/**/*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
+```
+
+### 12.7 使用示例
+
+```csharp
+// 示例 1: 单个文件完整转换
+SiLAConverter.ConvertComplete(
+    "GreetingProvider-v1_0.sila.xml",
+    "output/GreetingProvider"
+);
+
+// 示例 2: 仅转换为 Proto
+SiLAConverter.ConvertXmlToProto(
+    "SiLAService-v1_0.sila.xml",
+    "output/SiLAService.proto"
+);
+
+// 示例 3: 运行时动态转换（从内存）
+string xmlContent = await DownloadFeatureDefinitionAsync(serverUrl);
+string protoContent = SiLAConverter.ConvertXmlStringToProto(xmlContent);
+// 可以动态编译和使用
+
+// 示例 4: 批量转换
+var xmlFiles = Directory.GetFiles("features", "*.sila.xml");
+foreach (var xmlFile in xmlFiles)
+{
+    var name = Path.GetFileNameWithoutExtension(xmlFile);
+    SiLAConverter.ConvertComplete(xmlFile, $"output/{name}");
+}
+```
+
+### 12.8 必需文件清单
+
+转换器工具需要以下文件（来自 `sila_base` 仓库）：
+
+| 目录/文件 | 说明 | 必需 |
+|-----------|------|------|
+| `xslt/fdl2proto.xsl` | 主转换文件 | ✅ |
+| `xslt/fdl2proto-messages.xsl` | 消息生成 | ✅ |
+| `xslt/fdl2proto-service.xsl` | 服务生成 | ✅ |
+| `xslt/fdl-validation.xsl` | XML 验证 | ⭕ 推荐 |
+| `protobuf/SiLAFramework.proto` | 框架类型定义 | ✅ |
+| `protobuf/SiLABinaryTransfer.proto` | 二进制传输 | ⭕ 可选 |
+| `schema/FeatureDefinition.xsd` | Feature Schema | ⭕ 推荐 |
+| `schema/DataTypes.xsd` | 数据类型 Schema | ⭕ 推荐 |
+| `schema/Constraints.xsd` | 约束 Schema | ⭕ 推荐 |
+
+**获取方式**：
+```bash
+git clone https://gitlab.com/SiLA2/sila_base.git
+# 或直接下载所需文件
+```
+
+### 12.9 集成到动态客户端
+
+转换器可以集成到动态客户端，实现运行时代码生成：
+
+```csharp
+public class DynamicSilaClient
+{
+    public async Task<object> InvokeFeatureCommandAsync(
+        string featureXml, 
+        string commandName, 
+        Dictionary<string, object> parameters)
+    {
+        // 1. 转换 XML → Proto
+        string protoContent = SiLAConverter.ConvertXmlStringToProto(featureXml);
+        
+        // 2. 编译 Proto → C#（可使用 Roslyn 动态编译）
+        var assembly = CompileProtoToAssembly(protoContent);
+        
+        // 3. 动态调用
+        return await InvokeDynamically(assembly, commandName, parameters);
+    }
+}
+```
+
+---
+
+## 13. 静态代码生成
+
+### 13.1 Protocol Buffer 文件结构
 
 **文件命名**：
 ```
@@ -1068,9 +1490,9 @@ public class SilaStaticCodeGenerator
 
 ---
 
-## 13. 特征定义解析
+## 14. 特征定义解析
 
-### 13.1 特征定义语言
+### 14.1 特征定义语言
 
 **格式**：XML（符合 FeatureDefinition.xsd）
 
@@ -1177,9 +1599,9 @@ public async Task<FeatureDefinition> GetFeatureDefinitionAsync(
 
 ---
 
-## 14. 实现检查清单
+## 15. 实现检查清单
 
-### 14.1 必须实现（MUST）
+### 15.1 必须实现（MUST）
 
 #### 服务器发现
 - ✅ 实现 mDNS 响应器监听 `_sila._tcp.local.`
@@ -1239,9 +1661,9 @@ public async Task<FeatureDefinition> GetFeatureDefinitionAsync(
 
 ---
 
-## 15. 库架构建议
+## 16. 库架构建议
 
-### 15.1 模块划分
+### 16.1 模块划分
 
 ```
 SiLA2.Client/
@@ -1306,9 +1728,9 @@ public interface IStaticClientGenerator
 
 ---
 
-## 16. 测试策略
+## 17. 测试策略
 
-### 16.1 单元测试
+### 17.1 单元测试
 
 - Protocol Buffer 序列化/反序列化
 - 数据类型转换
@@ -1329,9 +1751,9 @@ public interface IStaticClientGenerator
 
 ---
 
-## 17. 参考资源
+## 18. 参考资源
 
-### 17.1 官方资源
+### 18.1 官方资源
 
 - **GitLab**: https://gitlab.com/SiLA2/sila_base
 - **官网**: https://sila-standard.com
@@ -1350,8 +1772,24 @@ public interface IStaticClientGenerator
 
 - **Grpc.Net.Client**: gRPC 客户端
 - **Google.Protobuf**: Protocol Buffers 运行时
+- **Grpc.Tools**: 包含 protoc 编译器和 gRPC 插件
 - **Makaretu.Dns**: mDNS/DNS-SD 实现（推荐）
 - **System.Security.Cryptography.X509Certificates**: 证书处理
+
+### 18.4 转换工具资源
+
+- **SiLA Base 仓库**: https://gitlab.com/SiLA2/sila_base
+  - `xslt/` - XSLT 转换模板
+  - `protobuf/` - SiLA 框架 Proto 定义
+  - `schema/` - XML Schema 验证文件
+  - `feature_definitions/` - 官方特性定义示例
+
+- **本文档提供的转换器**（第 12 章）:
+  - 支持文件转换和内存转换
+  - 支持批量转换
+  - 集成 XML Schema 验证
+  - 自动查找和调用 protoc 编译器
+  - 完整的 .NET 8 项目示例
 
 ---
 
@@ -1409,9 +1847,104 @@ subscription.Subscribe(value =>
 });
 ```
 
+### A.4 使用转换工具生成客户端代码
+
+```csharp
+// 示例：从服务器获取特性定义并动态生成客户端
+
+// 1. 连接到 SiLA 服务器
+using var client = new DynamicSilaClient("192.168.1.100", 50051);
+
+// 2. 获取特性列表
+var features = await client.GetImplementedFeaturesAsync();
+
+// 3. 对每个特性生成强类型客户端
+foreach (var featureFqi in features)
+{
+    // 获取特性定义 XML
+    var featureXml = await client.GetFeatureDefinitionXmlAsync(featureFqi);
+    
+    // 转换为 Proto
+    string protoContent = SiLAConverter.ConvertXmlStringToProto(featureXml);
+    
+    // 保存 Proto 文件
+    var featureName = featureFqi.Split('/').Last().Split('.')[0];
+    var protoPath = $"generated/{featureName}.proto";
+    File.WriteAllText(protoPath, protoContent);
+    
+    // 编译为 C#
+    SiLAConverter.CompileProtoToCSharp(protoPath, $"generated/{featureName}");
+    
+    Console.WriteLine($"✓ 已生成 {featureName} 客户端代码");
+}
+```
+
+### A.5 批量转换特性定义
+
+```csharp
+// 批量转换项目中的所有 SiLA 特性定义
+
+string featuresDir = "MyDevice/Features";
+string outputDir = "Generated";
+
+// 获取所有 .sila.xml 文件
+var xmlFiles = Directory.GetFiles(featuresDir, "*.sila.xml", SearchOption.AllDirectories);
+
+Console.WriteLine($"发现 {xmlFiles.Length} 个特性定义");
+
+int successCount = 0;
+foreach (var xmlFile in xmlFiles)
+{
+    try
+    {
+        var featureName = Path.GetFileNameWithoutExtension(xmlFile);
+        var featureOutput = Path.Combine(outputDir, featureName);
+        
+        // 完整转换流程
+        SiLAConverter.ConvertComplete(xmlFile, featureOutput);
+        successCount++;
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"✗ {Path.GetFileName(xmlFile)} 转换失败: {ex.Message}");
+    }
+}
+
+Console.WriteLine($"\n批量转换完成: {successCount}/{xmlFiles.Length} 成功");
+```
+
+### A.6 集成转换器到构建流程
+
+```xml
+<!-- 在 .csproj 中集成自动转换 -->
+<Project Sdk="Microsoft.NET.Sdk">
+  
+  <!-- 预构建事件：转换所有特性定义 -->
+  <Target Name="ConvertSiLAFeatures" BeforeTargets="BeforeBuild">
+    <Exec Command="dotnet run --project ../SiLAConverter/SiLAConverter.csproj -- convert-all Features/ Generated/" />
+  </Target>
+  
+  <!-- 自动编译生成的 Proto 文件 -->
+  <ItemGroup>
+    <Protobuf Include="Generated/**/*.proto" 
+              GrpcServices="Both" 
+              AdditionalImportDirs="protobuf" />
+    <Protobuf Include="protobuf/SiLAFramework.proto" GrpcServices="None" />
+  </ItemGroup>
+  
+</Project>
+```
+
 ---
 
 **文档结束**
 
-此实现指南涵盖了开发 SiLA 2 C# 库所需的所有核心技术信息。建议按照模块逐步实现，优先实现服务器发现和基础连接功能，然后逐步添加动态客户端和代码生成功能。
+此实现指南涵盖了开发 SiLA 2 C# 库所需的所有核心技术信息，包括：
+- 服务器发现与连接
+- 动态客户端实现
+- 特性定义转换工具（XML → Proto → C#）
+- 静态代码生成
+- 完整的测试和部署策略
+
+建议按照模块逐步实现，优先实现服务器发现和基础连接功能，使用第 12 章提供的转换工具简化开发流程，然后逐步添加动态客户端和高级功能。
 
