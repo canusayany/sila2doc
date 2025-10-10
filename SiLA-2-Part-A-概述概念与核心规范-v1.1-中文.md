@@ -104,7 +104,7 @@ SiLA的最终目标是实现一种新的实验室自动化。为此,SiLA 2基于
 
 本节为实验室自动化领域的特定利益相关者提供相关文档部分的指引。
 
-另请参见 https://gitlab.com/SiLA2/sila_base.wikis/home。
+另请参见 https://gitlab.com/SiLA2/sila_base 。
 
 ### 设备供应商、服务提供商、设备设计师
 
