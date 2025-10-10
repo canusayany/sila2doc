@@ -53,7 +53,18 @@ ca1=<证书第1行PEM编码>
 
 ### 1.3 实现要点
 
+**推荐库**：使用 `Zeroconf` NuGet 包进行 mDNS/DNS-SD 服务发现
+
+**Zeroconf 优势**：
+- 跨平台支持（Windows、Linux、macOS）
+- 现代异步 API 设计
+- 活跃维护和良好的文档
+- 简洁易用的接口
+
 ```csharp
+using Zeroconf;
+using Microsoft.Extensions.Logging;
+
 // 服务发现类结构建议
 public class SilaServerInfo
 {
@@ -69,30 +80,128 @@ public class SilaServerInfo
     public DateTime LastSeen { get; set; }
 }
 
-// 发现管理器
+// 发现管理器（使用 Zeroconf）
 public class SilaDiscoveryManager
 {
-    // 开始监听 mDNS 服务
-    public void StartDiscovery();
+    private readonly ILogger<SilaDiscoveryManager> _logger;
+    private readonly ConcurrentDictionary<string, SilaServerInfo> _discoveredServers = new();
+    private CancellationTokenSource _discoveryCts;
     
-    // 停止监听
-    public void StopDiscovery();
+    public SilaDiscoveryManager(ILogger<SilaDiscoveryManager> logger)
+    {
+        _logger = logger;
+    }
     
-    // 获取所有已发现的服务器
-    public IEnumerable<SilaServerInfo> GetDiscoveredServers();
+    /// <summary>
+    /// 开始监听 mDNS 服务
+    /// </summary>
+    public async Task StartDiscoveryAsync(CancellationToken cancellationToken = default)
+    {
+        _discoveryCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        
+        try
+        {
+            _logger.LogInformation("开始 SiLA 服务器发现...");
+            
+            // 持续监听 SiLA 服务
+            await foreach (var response in ZeroconfResolver.ResolveAsync("_sila._tcp.local.", 
+                cancellationToken: _discoveryCts.Token))
+            {
+                foreach (var service in response)
+                {
+                    ProcessDiscoveredService(service);
+                }
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.LogInformation("服务发现已停止");
+        }
+    }
     
-    // 事件：服务器上线
+    /// <summary>
+    /// 停止监听
+    /// </summary>
+    public void StopDiscovery()
+    {
+        _discoveryCts?.Cancel();
+    }
+    
+    /// <summary>
+    /// 获取所有已发现的服务器
+    /// </summary>
+    public IEnumerable<SilaServerInfo> GetDiscoveredServers()
+    {
+        return _discoveredServers.Values.ToList();
+    }
+    
+    /// <summary>
+    /// 事件：服务器上线
+    /// </summary>
     public event EventHandler<ServerDiscoveredEventArgs> ServerDiscovered;
     
-    // 事件：服务器下线
+    /// <summary>
+    /// 事件：服务器下线
+    /// </summary>
     public event EventHandler<ServerLostEventArgs> ServerLost;
+    
+    private void ProcessDiscoveredService(IZeroconfHost service)
+    {
+        try
+        {
+            // 从服务名称提取 UUID
+            var serviceName = service.Services.FirstOrDefault().Key;
+            var uuid = serviceName?.Split('.').FirstOrDefault();
+            
+            if (string.IsNullOrEmpty(uuid))
+                return;
+            
+            // 解析 TXT 记录
+            var txtRecords = service.Services.FirstOrDefault().Value?.Properties;
+            if (txtRecords == null)
+                return;
+            
+            var serverInfo = new SilaServerInfo
+            {
+                UUID = uuid,
+                ServerName = GetTxtValue(txtRecords, "server_name"),
+                Description = GetTxtValue(txtRecords, "description"),
+                Version = GetTxtValue(txtRecords, "version"),
+                IPAddress = service.IPAddress,
+                Port = service.Services.FirstOrDefault().Value?.Port ?? 0,
+                LastSeen = DateTime.Now
+            };
+            
+            // 添加或更新服务器信息
+            if (_discoveredServers.TryAdd(uuid, serverInfo))
+            {
+                _logger.LogInformation("发现新的 SiLA 服务器: {ServerName} ({UUID}) at {IPAddress}:{Port}",
+                    serverInfo.ServerName, serverInfo.UUID, serverInfo.IPAddress, serverInfo.Port);
+                ServerDiscovered?.Invoke(this, new ServerDiscoveredEventArgs(serverInfo));
+            }
+            else
+            {
+                _discoveredServers[uuid] = serverInfo;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "处理发现的服务时出错");
+        }
+    }
+    
+    private string GetTxtValue(IReadOnlyDictionary<string, string> txtRecords, string key)
+    {
+        return txtRecords.TryGetValue(key, out var value) ? value : null;
+    }
 }
 ```
 
 **缓存策略**：
-- 维护服务器列表，包含最后见到时间
-- 监听 mDNS goodbye 消息（TTL=0）
-- 超时检测：如果 TTL 过期未更新，标记为下线
+- 使用 `ConcurrentDictionary` 维护服务器列表
+- 记录每个服务器的最后见到时间（`LastSeen`）
+- 实现定期清理过期服务器的机制
+- 支持取消令牌以优雅停止发现过程
 
 ---
 
@@ -388,6 +497,308 @@ call.Dispose();
 - 订阅时立即返回当前值
 - 值变化时推送新值
 - 客户端通过取消 gRPC 流来停止订阅
+
+### 6.3 事件信息字段化处理
+
+对于可观察命令和属性，推荐将事件携带的信息存储在字段中，并提供公共方法获取这些信息。同时提供阻塞等待方法，直到事件完成再返回。
+
+#### 6.3.1 可观察属性事件处理
+
+**设计模式**：将属性值存储在私有字段，提供公共方法获取
+
+```csharp
+public class TemperatureMonitor
+{
+    private double _currentTemperature;
+    private DateTime _lastUpdateTime;
+    private readonly object _lock = new object();
+    
+    /// <summary>
+    /// 获取当前温度值
+    /// </summary>
+    public double GetCurrentTemperature()
+    {
+        lock (_lock)
+        {
+            return _currentTemperature;
+        }
+    }
+    
+    /// <summary>
+    /// 获取最后更新时间
+    /// </summary>
+    public DateTime GetLastUpdateTime()
+    {
+        lock (_lock)
+        {
+            return _lastUpdateTime;
+        }
+    }
+    
+    /// <summary>
+    /// 订阅温度变化
+    /// </summary>
+    public async Task SubscribeTemperatureAsync(CancellationToken cancellationToken = default)
+    {
+        var call = _client.Subscribe_Temperature(new Subscribe_Temperature_Parameters());
+        
+        await foreach (var update in call.ResponseStream.ReadAllAsync(cancellationToken))
+        {
+            lock (_lock)
+            {
+                _currentTemperature = update.Temperature.Value;
+                _lastUpdateTime = DateTime.Now;
+            }
+            
+            // 触发事件通知订阅者
+            TemperatureChanged?.Invoke(this, _currentTemperature);
+        }
+    }
+    
+    public event EventHandler<double> TemperatureChanged;
+}
+```
+
+#### 6.3.2 可观察命令事件处理与阻塞等待
+
+**设计模式**：跟踪命令执行状态，提供阻塞等待方法
+
+```csharp
+/// <summary>
+/// 命令执行状态
+/// </summary>
+public class CommandExecutionState
+{
+    public CommandStatus Status { get; set; }
+    public double Progress { get; set; }
+    public Duration EstimatedRemainingTime { get; set; }
+    public DateTime LastUpdated { get; set; }
+    public string ErrorMessage { get; set; }
+    public SiLAError Error { get; set; }
+}
+
+/// <summary>
+/// 可观察命令执行跟踪器
+/// </summary>
+public class CommandExecutionTracker
+{
+    private readonly ILogger<CommandExecutionTracker> _logger;
+    private readonly ConcurrentDictionary<string, CommandExecutionState> _executionStates = new();
+    private readonly ConcurrentDictionary<string, TaskCompletionSource<object>> _completionSources = new();
+    
+    public CommandExecutionTracker(ILogger<CommandExecutionTracker> logger)
+    {
+        _logger = logger;
+    }
+    
+    /// <summary>
+    /// 获取命令执行状态
+    /// </summary>
+    public CommandExecutionState GetExecutionState(string executionUuid)
+    {
+        return _executionStates.TryGetValue(executionUuid, out var state) 
+            ? state 
+            : null;
+    }
+    
+    /// <summary>
+    /// 阻塞等待命令执行完成
+    /// </summary>
+    /// <param name="executionUuid">命令执行 UUID</param>
+    /// <param name="timeout">超时时间（可选，默认无超时）</param>
+    /// <returns>命令执行结果</returns>
+    /// <exception cref="CommandExecutionException">命令执行失败时抛出</exception>
+    /// <exception cref="TimeoutException">执行超时时抛出</exception>
+    public async Task<TResult> WaitForCompletionAsync<TResult>(
+        string executionUuid, 
+        TimeSpan? timeout = null,
+        CancellationToken cancellationToken = default)
+    {
+        var cts = timeout.HasValue 
+            ? CancellationTokenSource.CreateLinkedTokenSource(cancellationToken)
+            : CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        
+        if (timeout.HasValue)
+        {
+            cts.CancelAfter(timeout.Value);
+        }
+        
+        try
+        {
+            _logger.LogInformation("等待命令 {ExecutionUuid} 完成...", executionUuid);
+            
+            while (!cts.Token.IsCancellationRequested)
+            {
+                if (!_executionStates.TryGetValue(executionUuid, out var state))
+                {
+                    await Task.Delay(100, cts.Token);
+                    continue;
+                }
+                
+                switch (state.Status)
+                {
+                    case CommandStatus.FinishedSuccessfully:
+                        _logger.LogInformation("命令 {ExecutionUuid} 执行成功", executionUuid);
+                        return await GetCommandResultAsync<TResult>(executionUuid);
+                        
+                    case CommandStatus.FinishedWithError:
+                        _logger.LogError("命令 {ExecutionUuid} 执行失败: {ErrorMessage}", 
+                            executionUuid, state.ErrorMessage);
+                        throw new CommandExecutionException(
+                            $"命令执行失败: {state.ErrorMessage}", 
+                            state.Error);
+                        
+                    case CommandStatus.Waiting:
+                    case CommandStatus.Running:
+                        _logger.LogDebug("命令 {ExecutionUuid} 执行中，进度: {Progress:P0}", 
+                            executionUuid, state.Progress);
+                        await Task.Delay(100, cts.Token);
+                        break;
+                        
+                    default:
+                        throw new InvalidOperationException($"未知的命令状态: {state.Status}");
+                }
+            }
+            
+            throw new OperationCanceledException("等待命令完成已取消");
+        }
+        catch (OperationCanceledException) when (timeout.HasValue && cts.IsCancellationRequested)
+        {
+            _logger.LogWarning("等待命令 {ExecutionUuid} 完成超时", executionUuid);
+            throw new TimeoutException($"等待命令 {executionUuid} 完成超时（超时设置: {timeout.Value}）");
+        }
+        finally
+        {
+            cts?.Dispose();
+        }
+    }
+    
+    /// <summary>
+    /// 订阅命令执行信息（内部方法）
+    /// </summary>
+    internal async Task SubscribeExecutionInfoAsync(
+        string executionUuid,
+        AsyncServerStreamingCall<ExecutionInfo> infoStream,
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            await foreach (var info in infoStream.ResponseStream.ReadAllAsync(cancellationToken))
+            {
+                var state = new CommandExecutionState
+                {
+                    Status = info.CommandStatus,
+                    Progress = info.ProgressInfo?.Value ?? 0,
+                    EstimatedRemainingTime = info.EstimatedRemainingTime,
+                    LastUpdated = DateTime.Now
+                };
+                
+                _executionStates[executionUuid] = state;
+                
+                // 如果命令完成（成功或失败），通知等待者
+                if (info.CommandStatus == CommandStatus.FinishedSuccessfully ||
+                    info.CommandStatus == CommandStatus.FinishedWithError)
+                {
+                    if (_completionSources.TryRemove(executionUuid, out var tcs))
+                    {
+                        tcs.TrySetResult(null);
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "订阅命令 {ExecutionUuid} 执行信息时出错", executionUuid);
+            
+            // 记录错误状态
+            if (_executionStates.TryGetValue(executionUuid, out var state))
+            {
+                state.Status = CommandStatus.FinishedWithError;
+                state.ErrorMessage = ex.Message;
+            }
+        }
+    }
+    
+    private async Task<TResult> GetCommandResultAsync<TResult>(string executionUuid)
+    {
+        // 这里应该调用实际的 Result RPC 获取结果
+        // 示例代码需要根据具体的命令类型实现
+        throw new NotImplementedException("需要实现具体的结果获取逻辑");
+    }
+}
+
+/// <summary>
+/// 命令执行异常
+/// </summary>
+public class CommandExecutionException : Exception
+{
+    public SiLAError SilaError { get; }
+    
+    public CommandExecutionException(string message, SiLAError error) 
+        : base(message)
+    {
+        SilaError = error;
+    }
+}
+```
+
+#### 6.3.3 使用示例
+
+```csharp
+public async Task ExecuteCommandExample()
+{
+    var tracker = new CommandExecutionTracker(_logger);
+    
+    // 启动可观察命令
+    var confirmation = await _client.StartMeasurementAsync(parameters);
+    string executionUuid = confirmation.CommandExecutionUUID.Value;
+    
+    // 在后台订阅执行信息
+    var infoCall = _client.StartMeasurement_Info(
+        new Subscribe_StartMeasurement_Info_Parameters 
+        { 
+            CommandExecutionUUID = confirmation.CommandExecutionUUID 
+        });
+    
+    _ = tracker.SubscribeExecutionInfoAsync(executionUuid, infoCall);
+    
+    try
+    {
+        // 阻塞等待命令完成（最多等待 5 分钟）
+        var result = await tracker.WaitForCompletionAsync<MeasurementResult>(
+            executionUuid, 
+            TimeSpan.FromMinutes(5));
+        
+        Console.WriteLine($"测量完成，结果: {result}");
+    }
+    catch (CommandExecutionException ex)
+    {
+        Console.WriteLine($"命令执行失败: {ex.Message}");
+        // 可以通过 ex.SilaError 获取详细错误信息
+        if (ex.SilaError?.DefinedExecutionError != null)
+        {
+            Console.WriteLine($"错误标识符: {ex.SilaError.DefinedExecutionError.ErrorIdentifier}");
+        }
+    }
+    catch (TimeoutException ex)
+    {
+        Console.WriteLine($"命令执行超时: {ex.Message}");
+        // 可以查询当前状态
+        var state = tracker.GetExecutionState(executionUuid);
+        Console.WriteLine($"当前进度: {state?.Progress:P0}");
+    }
+}
+```
+
+#### 6.3.4 关键设计要点
+
+1. **线程安全**：使用 `ConcurrentDictionary` 和锁保护共享状态
+2. **状态管理**：完整跟踪命令执行生命周期（Waiting → Running → Finished）
+3. **异常处理**：区分不同错误场景（执行失败、超时、取消）
+4. **超时保护**：使用 `CancellationToken` 避免无限等待
+5. **日志记录**：关键操作都记录日志，便于调试和监控
+6. **进度跟踪**：实时更新执行进度和剩余时间估算
+7. **资源清理**：正确释放 gRPC 调用和取消令牌
 
 ---
 
@@ -1219,6 +1630,518 @@ public class DynamicSilaClient
 }
 ```
 
+### 12.10 XML 注释到 C# 代码的映射流程
+
+本节分析从 SiLA 特性定义 XML 文件的注释信息（方法描述、入参返回值描述、值限制等）如何映射到最终生成的 C# 代码中。
+
+#### 12.10.1 转换流程三阶段
+
+```
+阶段 1: XML → Proto (XSLT)
+       ↓ 保留: Description, DisplayName, 约束信息
+       
+阶段 2: Proto → C# (protoc)
+       ↓ 转换: /* */ → /// <summary>
+       
+阶段 3: Proto C# → 包装类 (手动/代码生成)
+       ↓ 增强: 添加完整元数据和约束说明
+```
+
+#### 12.10.2 各阶段注释处理详解
+
+**阶段 1：XML → Proto（当前 XSLT 实现状态）**
+
+当前 XSLT 模板已经保留了部分注释信息：
+
+```xml
+<!-- XML 源文件示例 -->
+<Command>
+  <Identifier>SayHello</Identifier>
+  <DisplayName>Say Hello</DisplayName>
+  <Description>Returns "Hello SiLA 2 + [Name]" to the client.</Description>
+  <Observable>No</Observable>
+  <Parameter>
+    <Identifier>Name</Identifier>
+    <DisplayName>Name</DisplayName>
+    <Description>The name to greet.</Description>
+    <DataType><Basic>String</Basic></DataType>
+  </Parameter>
+  <Response>
+    <Identifier>Greeting</Identifier>
+    <DisplayName>Greeting</DisplayName>
+    <Description>The greeting string, returned to the SiLA Client.</Description>
+    <DataType><Basic>String</Basic></DataType>
+  </Response>
+</Command>
+```
+
+当前 XSLT 转换为 Proto（已保留 Description）：
+
+```protobuf
+/* Returns "Hello SiLA 2 + [Name]" to the client. */
+rpc SayHello (sila2.org.silastandard.examples.greetingprovider.v1.SayHello_Parameters) 
+    returns (sila2.org.silastandard.examples.greetingprovider.v1.SayHello_Responses) {}
+
+/* Parameters for SayHello */
+message SayHello_Parameters {
+  sila2.org.silastandard.String Name = 1;  /* The name to greet. */
+}
+
+/* Responses of SayHello */
+message SayHello_Responses {
+  sila2.org.silastandard.String Greeting = 1;  /* The greeting string, returned to the SiLA Client. */
+}
+```
+
+**阶段 2：Proto → C#（protoc 编译器自动处理）**
+
+protoc 编译器会将 Proto 注释转换为 C# 的 XML 文档注释：
+
+```csharp
+/// <summary>
+/// Returns "Hello SiLA 2 + [Name]" to the client. 
+/// </summary>
+/// <param name="request">The request received from the client.</param>
+/// <param name="context">The context of the server-side call handler being invoked.</param>
+/// <returns>The response to send back to the client (wrapped by a task).</returns>
+public virtual Task<SayHello_Responses> SayHello(
+    SayHello_Parameters request, 
+    ServerCallContext context)
+{
+    throw new RpcException(new Status(StatusCode.Unimplemented, ""));
+}
+
+/// <summary>
+/// Parameters for SayHello 
+/// </summary>
+public sealed partial class SayHello_Parameters : pb::IMessage<SayHello_Parameters>
+{
+    /// <summary>
+    /// The name to greet. 
+    /// </summary>
+    public String Name { get; set; }
+}
+```
+
+**阶段 3：生成包装类（需手动实现或代码生成）**
+
+为了将所有 XML 信息完整映射到包装类，有以下实现方案：
+
+#### 12.10.3 实现方案对比
+
+**方案 A：增强 XSLT 模板（推荐用于团队开发）**
+
+优点：
+- 一次实现，自动化程度高
+- 所有信息在 Proto 注释中可见
+- 便于代码审查和维护
+
+实现：修改 `fdl2proto-service.xsl` 和 `fdl2proto-messages.xsl`，在 Proto 注释中包含更丰富的元数据：
+
+```protobuf
+// [Feature: GreetingProvider v1.0]
+// [DisplayName: Say Hello]
+// [Observable: No]
+// [Maturity: Verified]
+/* Returns "Hello SiLA 2 + [Name]" to the client. */
+rpc SayHello (SayHello_Parameters) returns (SayHello_Responses) {}
+
+message SayHello_Parameters {
+  // [DisplayName: Name]
+  // [Required: Yes]
+  // [Type: String]
+  /* The name to greet. */
+  String Name = 1;
+}
+```
+
+然后编写后处理工具提取这些元数据标记：
+
+```csharp
+public class ProtoMetadataExtractor
+{
+    public Dictionary<string, MethodMetadata> ExtractMetadata(string protoFilePath)
+    {
+        var content = File.ReadAllText(protoFilePath);
+        var metadata = new Dictionary<string, MethodMetadata>();
+        
+        // 使用正则表达式或解析器提取 // [Key: Value] 形式的元数据
+        var methodPattern = @"// \[DisplayName: (.*?)\].*?rpc (\w+)";
+        // ... 解析逻辑
+        
+        return metadata;
+    }
+}
+```
+
+**方案 B：运行时从 XML 提取（推荐用于动态客户端）**
+
+优点：
+- 无需修改XSLT模板
+- 灵活性高，可按需提取信息
+- 适合需要UI显示元数据的场景
+
+实现：
+
+```csharp
+public class FeatureMetadata
+{
+    public string FeatureIdentifier { get; set; }
+    public string DisplayName { get; set; }
+    public string Description { get; set; }
+    public string Version { get; set; }
+    public string MaturityLevel { get; set; }
+    public Dictionary<string, CommandMetadata> Commands { get; set; }
+    public Dictionary<string, PropertyMetadata> Properties { get; set; }
+}
+
+public class CommandMetadata
+{
+    public string Identifier { get; set; }
+    public string DisplayName { get; set; }
+    public string Description { get; set; }
+    public bool Observable { get; set; }
+    public List<ParameterMetadata> Parameters { get; set; }
+    public List<ResponseMetadata> Responses { get; set; }
+    public List<string> DefinedErrors { get; set; }
+}
+
+public class ParameterMetadata
+{
+    public string Identifier { get; set; }
+    public string DisplayName { get; set; }
+    public string Description { get; set; }
+    public string DataType { get; set; }
+    public ConstraintInfo Constraints { get; set; }
+}
+
+public class FeatureDefinitionParser
+{
+    public FeatureMetadata ParseXml(string xmlContent)
+    {
+        var doc = XDocument.Parse(xmlContent);
+        var ns = doc.Root.Name.Namespace;
+        
+        var feature = new FeatureMetadata
+        {
+            FeatureIdentifier = doc.Root.Element(ns + "Identifier")?.Value,
+            DisplayName = doc.Root.Element(ns + "DisplayName")?.Value,
+            Description = doc.Root.Element(ns + "Description")?.Value,
+            Version = doc.Root.Attribute("FeatureVersion")?.Value,
+            MaturityLevel = doc.Root.Attribute("MaturityLevel")?.Value,
+            Commands = new Dictionary<string, CommandMetadata>(),
+            Properties = new Dictionary<string, PropertyMetadata>()
+        };
+        
+        // 解析命令
+        foreach (var cmdElement in doc.Root.Elements(ns + "Command"))
+        {
+            var cmd = ParseCommand(cmdElement, ns);
+            feature.Commands[cmd.Identifier] = cmd;
+        }
+        
+        // 解析属性
+        foreach (var propElement in doc.Root.Elements(ns + "Property"))
+        {
+            var prop = ParseProperty(propElement, ns);
+            feature.Properties[prop.Identifier] = prop;
+        }
+        
+        return feature;
+    }
+    
+    private CommandMetadata ParseCommand(XElement element, XNamespace ns)
+    {
+        var command = new CommandMetadata
+        {
+            Identifier = element.Element(ns + "Identifier")?.Value,
+            DisplayName = element.Element(ns + "DisplayName")?.Value,
+            Description = element.Element(ns + "Description")?.Value,
+            Observable = element.Element(ns + "Observable")?.Value == "Yes",
+            Parameters = new List<ParameterMetadata>(),
+            Responses = new List<ResponseMetadata>()
+        };
+        
+        // 解析参数
+        foreach (var paramElement in element.Elements(ns + "Parameter"))
+        {
+            command.Parameters.Add(ParseParameter(paramElement, ns));
+        }
+        
+        // 解析响应
+        foreach (var respElement in element.Elements(ns + "Response"))
+        {
+            command.Responses.Add(ParseResponse(respElement, ns));
+        }
+        
+        return command;
+    }
+}
+```
+
+使用示例：
+
+```csharp
+// 获取特性定义XML
+var featureXml = await silaClient.GetFeatureDefinitionAsync("org.silastandard/examples/GreetingProvider/v1");
+
+// 解析元数据
+var parser = new FeatureDefinitionParser();
+var metadata = parser.ParseXml(featureXml);
+
+// 在UI中显示
+Console.WriteLine($"特性: {metadata.DisplayName}");
+Console.WriteLine($"说明: {metadata.Description}");
+Console.WriteLine($"成熟度: {metadata.MaturityLevel}");
+Console.WriteLine();
+
+foreach (var cmd in metadata.Commands.Values)
+{
+    Console.WriteLine($"命令: {cmd.DisplayName}");
+    Console.WriteLine($"  标识符: {cmd.Identifier}");
+    Console.WriteLine($"  说明: {cmd.Description}");
+    Console.WriteLine($"  可观察: {cmd.Observable}");
+    
+    foreach (var param in cmd.Parameters)
+    {
+        Console.WriteLine($"  参数: {param.DisplayName} ({param.DataType})");
+        Console.WriteLine($"    说明: {param.Description}");
+        if (param.Constraints != null)
+        {
+            Console.WriteLine($"    约束: {param.Constraints}");
+        }
+    }
+}
+```
+
+**方案 C：后处理生成的 C# 代码（推荐用于静态客户端生成）**
+
+优点：
+- 生成的包装类包含完整文档
+- 符合C#文档标准
+- 支持IDE智能提示
+
+实现：
+
+```csharp
+public static class ClientWrapperGenerator
+{
+    public static void GenerateWrapper(
+        string grpcClientPath,
+        string featureXmlPath,
+        string outputPath)
+    {
+        // 1. 解析 XML 获取完整元数据
+        var xmlContent = File.ReadAllText(featureXmlPath);
+        var parser = new FeatureDefinitionParser();
+        var metadata = parser.ParseXml(xmlContent);
+        
+        // 2. 读取生成的 Grpc 类（用于参考）
+        var grpcCode = File.ReadAllText(grpcClientPath);
+        
+        // 3. 生成包装类
+        var sb = new StringBuilder();
+        
+        // 添加命名空间和using语句
+        sb.AppendLine("using System;");
+        sb.AppendLine("using System.Threading.Tasks;");
+        sb.AppendLine("using Grpc.Core;");
+        sb.AppendLine("using Microsoft.Extensions.Logging;");
+        sb.AppendLine();
+        
+        // 生成类
+        sb.AppendLine($"/// <summary>");
+        sb.AppendLine($"/// {metadata.DisplayName} 客户端包装类");
+        sb.AppendLine($"/// </summary>");
+        sb.AppendLine($"/// <remarks>");
+        sb.AppendLine($"/// {metadata.Description}");
+        sb.AppendLine($"/// <para>特性版本: {metadata.Version}</para>");
+        sb.AppendLine($"/// <para>成熟度级别: {metadata.MaturityLevel}</para>");
+        sb.AppendLine($"/// </remarks>");
+        sb.AppendLine($"public class {metadata.FeatureIdentifier}Client : IDisposable");
+        sb.AppendLine("{");
+        
+        // 生成字段
+        sb.AppendLine($"    private readonly {metadata.FeatureIdentifier}.{metadata.FeatureIdentifier}Client _client;");
+        sb.AppendLine($"    private readonly ILogger<{metadata.FeatureIdentifier}Client> _logger;");
+        sb.AppendLine();
+        
+        // 生成构造函数
+        sb.AppendLine($"    public {metadata.FeatureIdentifier}Client(");
+        sb.AppendLine($"        GrpcChannel channel,");
+        sb.AppendLine($"        ILogger<{metadata.FeatureIdentifier}Client> logger)");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        _client = new {metadata.FeatureIdentifier}.{metadata.FeatureIdentifier}Client(channel);");
+        sb.AppendLine("        _logger = logger;");
+        sb.AppendLine("    }");
+        sb.AppendLine();
+        
+        // 生成命令方法
+        foreach (var cmd in metadata.Commands.Values)
+        {
+            GenerateCommandMethod(sb, cmd);
+        }
+        
+        // 生成属性方法
+        foreach (var prop in metadata.Properties.Values)
+        {
+            GeneratePropertyMethod(sb, prop);
+        }
+        
+        // 生成Dispose方法
+        sb.AppendLine("    public void Dispose()");
+        sb.AppendLine("    {");
+        sb.AppendLine("        // 清理资源");
+        sb.AppendLine("    }");
+        sb.AppendLine("}");
+        
+        File.WriteAllText(outputPath, sb.ToString());
+    }
+    
+    private static void GenerateCommandMethod(StringBuilder sb, CommandMetadata cmd)
+    {
+        sb.AppendLine("    /// <summary>");
+        sb.AppendLine($"    /// {cmd.DisplayName}");
+        sb.AppendLine("    /// </summary>");
+        sb.AppendLine("    /// <remarks>");
+        sb.AppendLine($"    /// {cmd.Description}");
+        if (cmd.Observable)
+        {
+            sb.AppendLine("    /// <para>这是一个可观察命令，执行需要一定时间。</para>");
+        }
+        sb.AppendLine("    /// </remarks>");
+        
+        // 生成参数文档
+        foreach (var param in cmd.Parameters)
+        {
+            sb.AppendLine($"    /// <param name=\"{ToCamelCase(param.Identifier)}\">");
+            sb.AppendLine($"    /// {param.Description}");
+            if (param.Constraints != null)
+            {
+                sb.AppendLine($"    /// 约束: {param.Constraints}");
+            }
+            sb.AppendLine("    /// </param>");
+        }
+        
+        sb.AppendLine("    /// <returns>命令执行结果</returns>");
+        
+        // 生成方法签名
+        var paramList = string.Join(", ", 
+            cmd.Parameters.Select(p => $"{GetCSharpType(p.DataType)} {ToCamelCase(p.Identifier)}"));
+        
+        sb.AppendLine($"    public async Task<{cmd.Identifier}_Responses> {cmd.Identifier}Async({paramList})");
+        sb.AppendLine("    {");
+        sb.AppendLine($"        _logger.LogInformation(\"执行命令: {cmd.DisplayName}\");");
+        
+        // 生成方法体
+        if (cmd.Observable)
+        {
+            sb.AppendLine("        // 可观察命令执行逻辑");
+            sb.AppendLine("        // 1. 启动命令");
+            sb.AppendLine("        // 2. 订阅执行信息");
+            sb.AppendLine("        // 3. 等待完成");
+            sb.AppendLine("        // 4. 获取结果");
+        }
+        else
+        {
+            sb.AppendLine("        var request = new {cmd.Identifier}_Parameters();");
+            sb.AppendLine("        // 设置参数...");
+            sb.AppendLine("        return await _client.{cmd.Identifier}Async(request);");
+        }
+        
+        sb.AppendLine("    }");
+        sb.AppendLine();
+    }
+    
+    private static string GetCSharpType(string silaType)
+    {
+        // 类型映射逻辑
+        return silaType switch
+        {
+            "String" => "string",
+            "Integer" => "long",
+            "Real" => "double",
+            "Boolean" => "bool",
+            _ => silaType
+        };
+    }
+    
+    private static string ToCamelCase(string pascalCase)
+    {
+        if (string.IsNullOrEmpty(pascalCase))
+            return pascalCase;
+        return char.ToLower(pascalCase[0]) + pascalCase.Substring(1);
+    }
+}
+```
+
+#### 12.10.4 推荐实现路径
+
+根据项目需求选择合适的方案：
+
+**短期方案**（立即可用）：
+- 使用当前 XSLT 模板（已保留 Description）
+- protoc 生成的 C# 代码已有基本注释
+- 在包装类中手动添加 DisplayName 和约束说明
+- 适用于：小型项目、快速原型
+
+**中期方案**（适度投入）：
+- 使用方案 B：运行时从 XML 提取元数据
+- 用于 UI 显示和运行时验证
+- 不修改转换工具链
+- 适用于：动态客户端、需要元数据展示的应用
+
+**长期方案**（完整实现）：
+- 实施方案 A + 方案 C 组合
+- 增强 XSLT 模板保留所有元数据
+- 开发代码生成器创建完整包装类
+- 集成到 CI/CD 流程
+- 适用于：大型项目、企业级应用、需要维护多个特性
+
+#### 12.10.5 约束信息的处理
+
+对于 XML 中的约束信息（如单位、范围、长度等），建议：
+
+1. **在 Proto 注释中保留**：
+   ```protobuf
+   // [Unit: °C, Range: -273.15 to 1000]
+   /* Temperature value in Celsius */
+   Real Temperature = 1;
+   ```
+
+2. **在 C# 代码中添加验证**：
+   ```csharp
+   /// <param name="temperature">
+   /// 温度值（单位：°C，范围：-273.15 至 1000）
+   /// </param>
+   public void SetTemperature(double temperature)
+   {
+       if (temperature < -273.15 || temperature > 1000)
+       {
+           throw new ArgumentOutOfRangeException(nameof(temperature), 
+               "温度必须在 -273.15°C 至 1000°C 之间");
+       }
+       // ...
+   }
+   ```
+
+3. **提供元数据访问**：
+   ```csharp
+   public class ParameterConstraints
+   {
+       public string Unit { get; set; }
+       public double? MinValue { get; set; }
+       public double? MaxValue { get; set; }
+       public int? MaxLength { get; set; }
+       // ...
+   }
+   
+   public static ParameterConstraints GetConstraints(string parameterFqi)
+   {
+       // 从元数据中查询约束信息
+   }
+   ```
+
 ---
 
 ## 13. 静态代码生成
@@ -1728,38 +2651,544 @@ public interface IStaticClientGenerator
 
 ---
 
-## 17. 测试策略
+## 17. 日志记录最佳实践
 
-### 17.1 单元测试
+本章介绍如何在 SiLA 2 C# 库中实现结构化的日志记录，使用 Microsoft 官方的日志框架。
+
+### 17.1 日志框架选择
+
+**推荐使用**：`Microsoft.Extensions.Logging`
+
+**优势**：
+- 微软官方维护，与 .NET 生态系统深度集成
+- 支持依赖注入（DI）模式
+- 提供统一的日志抽象接口
+- 支持多种日志输出提供程序（Console、File、Azure 等）
+- 结构化日志支持，便于查询和分析
+- 性能优化，支持日志级别过滤
+
+**必需的 NuGet 包**：
+```xml
+<PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+<PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
+```
+
+### 17.2 日志级别定义
+
+按严重程度从低到高：
+
+| 级别 | 数值 | 使用场景 | 示例 |
+|------|------|----------|------|
+| **Trace** | 0 | 最详细的诊断信息，包含敏感数据 | 记录每个 gRPC 消息的完整内容 |
+| **Debug** | 1 | 开发调试信息，生产环境通常禁用 | 记录方法进入/退出、中间变量值 |
+| **Information** | 2 | 正常运行时的关键事件 | 服务器发现、连接建立、命令执行 |
+| **Warning** | 3 | 异常但可恢复的情况 | 连接超时后重试、证书即将过期 |
+| **Error** | 4 | 错误导致功能失败，但程序继续运行 | 命令执行失败、gRPC 调用异常 |
+| **Critical** | 5 | 严重错误导致应用程序崩溃 | 无法启动服务、致命配置错误 |
+
+### 17.3 各模块日志记录建议
+
+#### 17.3.1 服务器发现模块
+
+```csharp
+public class SilaDiscoveryService
+{
+    private readonly ILogger<SilaDiscoveryService> _logger;
+    
+    public SilaDiscoveryService(ILogger<SilaDiscoveryService> logger)
+    {
+        _logger = logger;
+    }
+    
+    public async Task StartDiscoveryAsync()
+    {
+        _logger.LogInformation("开始 SiLA 服务器发现");
+        
+        try
+        {
+            await foreach (var response in ZeroconfResolver.ResolveAsync("_sila._tcp.local."))
+            {
+                foreach (var service in response)
+                {
+                    _logger.LogInformation(
+                        "发现 SiLA 服务器 {ServerName} ({ServerUUID}) at {IPAddress}:{Port}",
+                        service.ServerName, 
+                        service.UUID, 
+                        service.IPAddress, 
+                        service.Port);
+                    
+                    _logger.LogDebug(
+                        "服务器详细信息: Version={Version}, Description={Description}",
+                        service.Version,
+                        service.Description);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "服务器发现过程中发生错误");
+            throw;
+        }
+    }
+    
+    public void OnServerLost(string serverUuid)
+    {
+        _logger.LogWarning("SiLA 服务器 {ServerUUID} 已离线", serverUuid);
+    }
+}
+```
+
+#### 17.3.2 连接管理模块
+
+```csharp
+public class SilaConnectionManager
+{
+    private readonly ILogger<SilaConnectionManager> _logger;
+    
+    public async Task<GrpcChannel> ConnectAsync(string address, int port)
+    {
+        _logger.LogInformation("连接到 SiLA 服务器: {Address}:{Port}", address, port);
+        
+        var channel = GrpcChannel.ForAddress($"https://{address}:{port}", new GrpcChannelOptions
+        {
+            HttpHandler = CreateHttpHandler()
+        });
+        
+        try
+        {
+            // 测试连接
+            await TestConnectionAsync(channel);
+            _logger.LogInformation("成功连接到 SiLA 服务器: {Address}:{Port}", address, port);
+            return channel;
+        }
+        catch (RpcException ex)
+        {
+            _logger.LogError(ex, 
+                "连接 SiLA 服务器失败: {Address}:{Port}, StatusCode={StatusCode}",
+                address, port, ex.StatusCode);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogCritical(ex, 
+                "连接 SiLA 服务器时发生致命错误: {Address}:{Port}",
+                address, port);
+            throw;
+        }
+    }
+}
+```
+
+#### 17.3.3 命令执行模块
+
+```csharp
+public class CommandExecutor
+{
+    private readonly ILogger<CommandExecutor> _logger;
+    
+    public async Task<TResponse> ExecuteCommandAsync<TResponse>(
+        string commandName,
+        object parameters)
+    {
+        using var scope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["CommandName"] = commandName,
+            ["CorrelationId"] = Guid.NewGuid()
+        });
+        
+        _logger.LogInformation("开始执行命令: {CommandName}", commandName);
+        var stopwatch = Stopwatch.StartNew();
+        
+        try
+        {
+            var result = await ExecuteInternalAsync<TResponse>(commandName, parameters);
+            
+            stopwatch.Stop();
+            _logger.LogInformation(
+                "命令执行成功: {CommandName}, 耗时={ElapsedMs}ms",
+                commandName,
+                stopwatch.ElapsedMilliseconds);
+            
+            return result;
+        }
+        catch (CommandExecutionException ex)
+        {
+            stopwatch.Stop();
+            _logger.LogError(ex,
+                "命令执行失败: {CommandName}, ErrorType={ErrorType}, 耗时={ElapsedMs}ms",
+                commandName,
+                ex.SilaError?.ErrorCase,
+                stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+        catch (TimeoutException ex)
+        {
+            stopwatch.Stop();
+            _logger.LogWarning(ex,
+                "命令执行超时: {CommandName}, 耗时={ElapsedMs}ms",
+                commandName,
+                stopwatch.ElapsedMilliseconds);
+            throw;
+        }
+    }
+    
+    public async Task<TResult> ExecuteObservableCommandAsync<TResult>(
+        string commandName,
+        object parameters,
+        IProgress<double> progress = null)
+    {
+        var executionUuid = await StartCommandAsync(commandName, parameters);
+        _logger.LogInformation(
+            "可观察命令已启动: {CommandName}, ExecutionUUID={ExecutionUUID}",
+            commandName,
+            executionUuid);
+        
+        await foreach (var info in SubscribeExecutionInfoAsync(executionUuid))
+        {
+            _logger.LogDebug(
+                "命令执行进度: {CommandName}, Status={Status}, Progress={Progress:P0}",
+                commandName,
+                info.CommandStatus,
+                info.ProgressInfo?.Value ?? 0);
+            
+            progress?.Report(info.ProgressInfo?.Value ?? 0);
+            
+            if (info.CommandStatus == CommandStatus.FinishedSuccessfully)
+            {
+                _logger.LogInformation(
+                    "可观察命令执行成功: {CommandName}, ExecutionUUID={ExecutionUUID}",
+                    commandName,
+                    executionUuid);
+                break;
+            }
+            else if (info.CommandStatus == CommandStatus.FinishedWithError)
+            {
+                _logger.LogError(
+                    "可观察命令执行失败: {CommandName}, ExecutionUUID={ExecutionUUID}",
+                    commandName,
+                    executionUuid);
+                throw new CommandExecutionException("命令执行失败", null);
+            }
+        }
+        
+        return await GetCommandResultAsync<TResult>(executionUuid);
+    }
+}
+```
+
+#### 17.3.4 错误处理与日志
+
+```csharp
+public class SilaErrorHandler
+{
+    private readonly ILogger<SilaErrorHandler> _logger;
+    
+    public void HandleRpcException(RpcException ex, string context)
+    {
+        switch (ex.StatusCode)
+        {
+            case StatusCode.Unavailable:
+                _logger.LogWarning(ex, 
+                    "服务暂时不可用: {Context}, 建议重试",
+                    context);
+                break;
+                
+            case StatusCode.DeadlineExceeded:
+                _logger.LogWarning(ex,
+                    "请求超时: {Context}",
+                    context);
+                break;
+                
+            case StatusCode.Unauthenticated:
+                _logger.LogError(ex,
+                    "认证失败: {Context}",
+                    context);
+                break;
+                
+            case StatusCode.PermissionDenied:
+                _logger.LogError(ex,
+                    "权限不足: {Context}",
+                    context);
+                break;
+                
+            case StatusCode.Aborted:
+                // 可能是 SiLA 错误
+                var silaError = TryParseSilaError(ex);
+                if (silaError != null)
+                {
+                    LogSilaError(silaError, context);
+                }
+                else
+                {
+                    _logger.LogError(ex, "操作被中止: {Context}", context);
+                }
+                break;
+                
+            default:
+                _logger.LogError(ex,
+                    "gRPC 调用失败: {Context}, StatusCode={StatusCode}",
+                    context,
+                    ex.StatusCode);
+                break;
+        }
+    }
+    
+    private void LogSilaError(SiLAError error, string context)
+    {
+        switch (error.ErrorCase)
+        {
+            case SiLAError.ErrorOneofCase.ValidationError:
+                _logger.LogError(
+                    "参数验证失败: {Context}, Parameter={Parameter}, Message={Message}",
+                    context,
+                    error.ValidationError.Parameter,
+                    error.ValidationError.Message);
+                break;
+                
+            case SiLAError.ErrorOneofCase.DefinedExecutionError:
+                _logger.LogError(
+                    "定义的执行错误: {Context}, ErrorId={ErrorIdentifier}, Message={Message}",
+                    context,
+                    error.DefinedExecutionError.ErrorIdentifier,
+                    error.DefinedExecutionError.Message);
+                break;
+                
+            case SiLAError.ErrorOneofCase.UndefinedExecutionError:
+                _logger.LogError(
+                    "未定义的执行错误: {Context}, Message={Message}",
+                    context,
+                    error.UndefinedExecutionError.Message);
+                break;
+                
+            case SiLAError.ErrorOneofCase.FrameworkError:
+                _logger.LogError(
+                    "框架错误: {Context}, ErrorType={ErrorType}, Message={Message}",
+                    context,
+                    error.FrameworkError.ErrorType,
+                    error.FrameworkError.Message);
+                break;
+        }
+    }
+}
+```
+
+### 17.4 配置日志提供程序
+
+#### 17.4.1 基本配置
+
+```csharp
+using Microsoft.Extensions.Logging;
+
+// 创建日志工厂
+var loggerFactory = LoggerFactory.Create(builder =>
+{
+    builder
+        .AddConsole()           // 控制台输出
+        .AddDebug()             // 调试输出
+        .SetMinimumLevel(LogLevel.Information); // 设置最低级别
+});
+
+// 创建具体模块的日志器
+var discoveryLogger = loggerFactory.CreateLogger<SilaDiscoveryService>();
+var connectionLogger = loggerFactory.CreateLogger<SilaConnectionManager>();
+```
+
+#### 17.4.2 使用依赖注入配置
+
+```csharp
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+
+var services = new ServiceCollection();
+
+// 配置日志
+services.AddLogging(builder =>
+{
+    builder
+        .AddConsole(options =>
+        {
+            options.TimestampFormat = "[yyyy-MM-dd HH:mm:ss] ";
+        })
+        .AddDebug()
+        .AddFilter("Microsoft", LogLevel.Warning)  // 过滤微软框架日志
+        .AddFilter("System", LogLevel.Warning)
+        .AddFilter("SiLA", LogLevel.Debug);        // SiLA 模块使用 Debug 级别
+});
+
+// 注册服务
+services.AddSingleton<SilaDiscoveryService>();
+services.AddSingleton<SilaConnectionManager>();
+
+var serviceProvider = services.BuildServiceProvider();
+
+// 使用服务（日志器自动注入）
+var discovery = serviceProvider.GetRequiredService<SilaDiscoveryService>();
+```
+
+#### 17.4.3 从配置文件加载
+
+`appsettings.json`:
+```json
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft": "Warning",
+      "System": "Warning",
+      "SiLA.Discovery": "Debug",
+      "SiLA.Connection": "Information",
+      "SiLA.Command": "Debug"
+    },
+    "Console": {
+      "IncludeScopes": true,
+      "TimestampFormat": "[yyyy-MM-dd HH:mm:ss] "
+    }
+  }
+}
+```
+
+加载配置：
+```csharp
+using Microsoft.Extensions.Configuration;
+
+var configuration = new ConfigurationBuilder()
+    .SetBasePath(Directory.GetCurrentDirectory())
+    .AddJsonFile("appsettings.json", optional: false)
+    .Build();
+
+services.AddLogging(builder =>
+{
+    builder.AddConfiguration(configuration.GetSection("Logging"));
+    builder.AddConsole();
+    builder.AddDebug();
+});
+```
+
+### 17.5 结构化日志最佳实践
+
+#### 17.5.1 使用命名占位符
+
+✅ **推荐**：
+```csharp
+_logger.LogInformation(
+    "用户 {UserId} 从设备 {DeviceId} 执行命令 {CommandName}",
+    userId, deviceId, commandName);
+```
+
+❌ **不推荐**：
+```csharp
+_logger.LogInformation($"用户 {userId} 从设备 {deviceId} 执行命令 {commandName}");
+```
+
+原因：命名占位符支持结构化日志查询和分析。
+
+#### 17.5.2 使用日志范围（Scopes）
+
+```csharp
+using (_logger.BeginScope(new Dictionary<string, object>
+{
+    ["SessionId"] = sessionId,
+    ["UserId"] = userId,
+    ["DeviceId"] = deviceId
+}))
+{
+    _logger.LogInformation("会话开始");
+    
+    // 这个范围内的所有日志都会包含 SessionId、UserId、DeviceId
+    await ExecuteCommandsAsync();
+    
+    _logger.LogInformation("会话结束");
+}
+```
+
+#### 17.5.3 性能考虑
+
+使用日志级别检查避免不必要的字符串构建：
+
+```csharp
+if (_logger.IsEnabled(LogLevel.Debug))
+{
+    var detailedInfo = BuildExpensiveDebugInfo();
+    _logger.LogDebug("详细调试信息: {Info}", detailedInfo);
+}
+```
+
+### 17.6 日志输出示例
+
+配置完成后的典型日志输出：
+
+```
+[2025-10-10 14:23:15] info: SiLA.Discovery.SilaDiscoveryService[0]
+      开始 SiLA 服务器发现
+      
+[2025-10-10 14:23:16] info: SiLA.Discovery.SilaDiscoveryService[0]
+      发现 SiLA 服务器 MyDevice (25597b36-e9bf-11e8-aeb5-f2801f1b9fd1) at 192.168.1.100:50051
+      
+[2025-10-10 14:23:16] info: SiLA.Connection.SilaConnectionManager[0]
+      连接到 SiLA 服务器: 192.168.1.100:50051
+      
+[2025-10-10 14:23:17] info: SiLA.Connection.SilaConnectionManager[0]
+      成功连接到 SiLA 服务器: 192.168.1.100:50051
+      
+[2025-10-10 14:23:18] info: SiLA.Command.CommandExecutor[0]
+      => CommandName: "StartMeasurement", CorrelationId: "a1b2c3d4-..."
+      开始执行命令: StartMeasurement
+      
+[2025-10-10 14:23:18] info: SiLA.Command.CommandExecutor[0]
+      => CommandName: "StartMeasurement", CorrelationId: "a1b2c3d4-..."
+      可观察命令已启动: StartMeasurement, ExecutionUUID=exec-12345
+      
+[2025-10-10 14:23:19] dbug: SiLA.Command.CommandExecutor[0]
+      => CommandName: "StartMeasurement", CorrelationId: "a1b2c3d4-..."
+      命令执行进度: StartMeasurement, Status=Running, Progress=25%
+      
+[2025-10-10 14:23:25] info: SiLA.Command.CommandExecutor[0]
+      => CommandName: "StartMeasurement", CorrelationId: "a1b2c3d4-..."
+      可观察命令执行成功: StartMeasurement, ExecutionUUID=exec-12345
+      
+[2025-10-10 14:23:25] info: SiLA.Command.CommandExecutor[0]
+      => CommandName: "StartMeasurement", CorrelationId: "a1b2c3d4-..."
+      命令执行成功: StartMeasurement, 耗时=7234ms
+```
+
+---
+
+## 18. 测试策略
+
+### 18.1 单元测试
 
 - Protocol Buffer 序列化/反序列化
 - 数据类型转换
 - FQI 生成和解析
 - 错误处理逻辑
+- 日志记录功能
 
-### 16.2 集成测试
+### 18.2 集成测试
 
 - 与 SiLA 参考实现服务器通信
-- 服务器发现功能
+- 服务器发现功能（mDNS/DNS-SD）
 - 认证和授权流程
 - 二进制传输
+- 可观察命令和属性
 
-### 16.3 测试工具
+### 18.3 测试工具
 
 - 使用 SiLA GitLab 提供的参考实现
 - 模拟 SiLA 服务器（用于 CI/CD）
+- 日志分析工具（验证日志输出正确性）
 
 ---
 
-## 18. 参考资源
+## 19. 参考资源
 
-### 18.1 官方资源
+### 19.1 官方资源
 
 - **GitLab**: https://gitlab.com/SiLA2/sila_base
 - **官网**: https://sila-standard.com
 - **特性定义**: https://gitlab.com/SiLA2/sila_base/-/tree/master/featuredefinitions
 
-### 17.2 技术规范
+### 19.2 技术规范
 
 - **RFC 6762**: mDNS 规范
 - **RFC 6763**: DNS-SD 规范
@@ -1768,15 +3197,27 @@ public interface IStaticClientGenerator
 - **gRPC**: https://grpc.io/
 - **Protocol Buffers**: https://developers.google.com/protocol-buffers
 
-### 17.3 C# 库
+### 19.3 C# 库
 
+**核心库**：
 - **Grpc.Net.Client**: gRPC 客户端
 - **Google.Protobuf**: Protocol Buffers 运行时
 - **Grpc.Tools**: 包含 protoc 编译器和 gRPC 插件
-- **Makaretu.Dns**: mDNS/DNS-SD 实现（推荐）
 - **System.Security.Cryptography.X509Certificates**: 证书处理
 
-### 18.4 转换工具资源
+**服务发现**：
+- **Zeroconf**: mDNS/DNS-SD 实现（**推荐**）
+  - 跨平台支持
+  - 现代异步 API
+  - NuGet: `Zeroconf`
+
+**日志记录**：
+- **Microsoft.Extensions.Logging**: 日志框架（**推荐**）
+- **Microsoft.Extensions.Logging.Console**: 控制台日志输出
+- **Microsoft.Extensions.Logging.Debug**: 调试日志输出
+- **Microsoft.Extensions.Logging.Configuration**: 配置支持
+
+### 19.4 转换工具资源
 
 - **SiLA Base 仓库**: https://gitlab.com/SiLA2/sila_base
   - `xslt/` - XSLT 转换模板
