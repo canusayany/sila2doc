@@ -159,6 +159,7 @@ namespace SilaGeneratorWpf.Services
             Action<string> onProgress,
             string commandId)
         {
+            CancellationTokenSource? cts = null;
             try
             {
                 var context = CreateFeatureContext(serverData, feature);
@@ -167,32 +168,52 @@ namespace SilaGeneratorWpf.Services
                 var request = client.CreateRequest();
                 SetRequestParameters(request, command, parameters);
 
-                var cts = new CancellationTokenSource();
+                cts = new CancellationTokenSource();
                 _subscriptions[commandId] = cts;
 
-                var dynamicCommand = client.Invoke(request);
-                dynamicCommand.Start();
-
-                // 监听状态更新
-                _ = Task.Run(async () =>
+                // 执行命令
+                var result = await Task.Run(async () =>
                 {
                     try
                     {
-                        await foreach (var state in dynamicCommand.StateUpdates.ReadAllAsync(cts.Token))
+                        var dynamicCommand = client.Invoke(request);
+                        dynamicCommand.Start();
+
+                        // 监听状态更新
+                        _ = Task.Run(async () =>
                         {
-                            var progressInfo = $"进度: {state.Progress:P0}, 状态: {state.State}, 剩余: {state.EstimatedRemainingTime.TotalSeconds:F0}s";
-                            onProgress?.Invoke(progressInfo);
-                        }
+                            try
+                            {
+                                await foreach (var state in dynamicCommand.StateUpdates.ReadAllAsync(cts.Token))
+                                {
+                                    var progressInfo = $"进度: {state.Progress:P0}, 状态: {state.State}";
+                                    if (state.EstimatedRemainingTime.TotalSeconds > 0)
+                                    {
+                                        progressInfo += $", 剩余: {state.EstimatedRemainingTime.TotalSeconds:F0}s";
+                                    }
+                                    onProgress?.Invoke(progressInfo);
+                                }
+                            }
+                            catch (OperationCanceledException) { }
+                            catch { }
+                        }, cts.Token);
+
+                        // 等待命令完成并获取结果
+                        var response = await dynamicCommand.Response;
+                        
+                        return response;
                     }
-                    catch (OperationCanceledException) { }
+                    catch (Exception ex)
+                    {
+                        throw new Exception($"命令执行失败: {ex.Message}", ex);
+                    }
                 }, cts.Token);
-
-                // 等待最终结果
-                var result = await dynamicCommand.Response;
                 
-                _subscriptions.Remove(commandId);
-                cts.Dispose();
-
+                if (_subscriptions.ContainsKey(commandId))
+                {
+                    _subscriptions.Remove(commandId);
+                }
+                
                 return FormatResult(result);
             }
             catch (OperationCanceledException)
@@ -201,7 +222,11 @@ namespace SilaGeneratorWpf.Services
             }
             catch (Exception ex)
             {
-                return $"❌ 错误: {ex.Message}\n{ex.StackTrace}";
+                return $"❌ 错误: {ex.Message}";
+            }
+            finally
+            {
+                cts?.Dispose();
             }
         }
 

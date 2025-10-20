@@ -1,16 +1,18 @@
 using System;
 using System.Collections.ObjectModel;
-using System.ComponentModel;
-using System.Runtime.CompilerServices;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SilaGeneratorWpf.Models
 {
     /// <summary>
     /// 服务器信息视图模型
     /// </summary>
-    public class ServerInfoViewModel : INotifyPropertyChanged
+    public partial class ServerInfoViewModel : ObservableObject
     {
+        [ObservableProperty]
         private bool _isSelected;
+
+        [ObservableProperty]
         private bool _isExpanded;
 
         public string ServerName { get; set; } = string.Empty;
@@ -23,28 +25,12 @@ namespace SilaGeneratorWpf.Models
 
         public ObservableCollection<FeatureInfoViewModel> Features { get; set; } = new();
 
-        public bool IsSelected
+        partial void OnIsSelectedChanged(bool value)
         {
-            get => _isSelected;
-            set
+            // 同步选择所有特性
+            foreach (var feature in Features)
             {
-                _isSelected = value;
-                OnPropertyChanged();
-                // 同步选择所有特性
-                foreach (var feature in Features)
-                {
-                    feature.IsSelected = value;
-                }
-            }
-        }
-
-        public bool IsExpanded
-        {
-            get => _isExpanded;
-            set
-            {
-                _isExpanded = value;
-                OnPropertyChanged();
+                feature.IsSelected = value;
             }
         }
 
@@ -69,21 +55,17 @@ namespace SilaGeneratorWpf.Models
                 }
             }
         }
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
     }
 
     /// <summary>
     /// 特性信息视图模型
     /// </summary>
-    public class FeatureInfoViewModel : INotifyPropertyChanged
+    public partial class FeatureInfoViewModel : ObservableObject
     {
+        [ObservableProperty]
         private bool _isSelected;
+
+        [ObservableProperty]
         private bool _isExpanded;
 
         public string Identifier { get; set; } = string.Empty;
@@ -99,34 +81,7 @@ namespace SilaGeneratorWpf.Models
         public ObservableCollection<PropertyInfoViewModel> Properties { get; set; } = new();
         public ObservableCollection<MetadataInfoViewModel> Metadata { get; set; } = new();
 
-        public bool IsSelected
-        {
-            get => _isSelected;
-            set
-            {
-                _isSelected = value;
-                OnPropertyChanged();
-            }
-        }
-
-        public bool IsExpanded
-        {
-            get => _isExpanded;
-            set
-            {
-                _isExpanded = value;
-                OnPropertyChanged();
-            }
-        }
-
         public string DisplayText => $"{DisplayName ?? Identifier} (v{Version})";
-
-        public event PropertyChangedEventHandler? PropertyChanged;
-
-        protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-        }
     }
 
     /// <summary>
@@ -164,4 +119,3 @@ namespace SilaGeneratorWpf.Models
         public string DisplayText => $"ℹ️ {DisplayName ?? Identifier}";
     }
 }
-
