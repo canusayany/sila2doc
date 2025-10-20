@@ -386,7 +386,7 @@ namespace SilaGeneratorWpf
             
             try
             {
-                var servers = await _discoveryService.ScanServersAsync(TimeSpan.FromSeconds(5));
+                var servers = await _discoveryService.ScanServersAsync(TimeSpan.FromSeconds(3));
                 
                 _servers.Clear();
                 foreach (var server in servers)

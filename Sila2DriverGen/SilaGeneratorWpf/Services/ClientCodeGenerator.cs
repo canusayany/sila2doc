@@ -1,62 +1,34 @@
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using Tecan.Sila2;
+using Tecan.Sila2.Generator;
 
 namespace SilaGeneratorWpf.Services
 {
     /// <summary>
-    /// SiLA2 客户端代码生成器 - 使用预编译的 SilaGen.exe
+    /// SiLA2 客户端代码生成器 - 使用 Generator.dll 直接调用 API
     /// 
     /// 使用说明：
-    /// 1. SilaGen.exe 已包含在输出目录中 (reflib\SilaGen.exe)
+    /// 1. 通过项目引用 Generator.dll
     /// 2. 支持从 Feature XML 文件或 Feature 对象直接生成客户端代码
     /// 3. 生成三个文件：接口（I*.cs）、DTOs（*Dtos.cs）、客户端（*Client.cs）
     /// 
     /// 部署说明：
-    /// - SilaGen.exe 会自动复制到输出目录
-    /// - 发布时需要将 SilaGen.exe 与主应用程序一起部署
+    /// - Generator.dll 及其依赖项会自动复制到输出目录
     /// </summary>
     public class ClientCodeGenerator
     {
-        private string? _silaGenPath;
+        private readonly bool _generateInterface;
 
-        public ClientCodeGenerator()
+        /// <summary>
+        /// 构造函数
+        /// </summary>
+        /// <param name="generateInterface">是否生成接口文件,默认为 true</param>
+        public ClientCodeGenerator(bool generateInterface = true)
         {
-            // 查找 SilaGen.exe - 应该在应用程序所在目录或 reflib 子目录
-            var possiblePaths = new List<string>
-            {
-                // 优先查找应用目录
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SilaGen.exe"),
-                // 其次查找 reflib 子目录（调试时的位置）
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "reflib", "SilaGen.exe"),
-                // 发布后单文件的情况（与主exe同目录）
-                Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "SilaGen.exe"),
-            };
-
-            _silaGenPath = null;
-            
-            foreach (var path in possiblePaths)
-            {
-                if (File.Exists(path))
-                {
-                    _silaGenPath = path;
-                    break;
-                }
-            }
-
-            // 如果在标准位置找不到，尝试从应用目录提取或创建符号链接
-            if (string.IsNullOrEmpty(_silaGenPath) || !File.Exists(_silaGenPath))
-            {
-                // 记录找不到的情况，但不抛出异常（延迟到实际使用时）
-                var searchedPaths = string.Join("\n  ", possiblePaths);
-                System.Diagnostics.Debug.WriteLine($"警告: 找不到 SilaGen.exe。已尝试的路径:\n  {searchedPaths}");
-                
-                // 如果所有查找都失败，使用第一个预期路径作为备用
-                _silaGenPath = possiblePaths[0];
-            }
+            _generateInterface = generateInterface;
         }
 
         /// <summary>
@@ -73,13 +45,6 @@ namespace SilaGeneratorWpf.Services
 
             try
             {
-                if (string.IsNullOrEmpty(_silaGenPath) || !File.Exists(_silaGenPath))
-                {
-                    result.Success = false;
-                    result.Message = $"错误: 找不到 SilaGen.exe";
-                    return result;
-                }
-
                 if (!Directory.Exists(outputDirectory))
                 {
                     Directory.CreateDirectory(outputDirectory);
@@ -146,13 +111,6 @@ namespace SilaGeneratorWpf.Services
 
             try
             {
-                if (string.IsNullOrEmpty(_silaGenPath) || !File.Exists(_silaGenPath))
-                {
-                    result.Success = false;
-                    result.Message = $"错误: 找不到 SilaGen.exe";
-                    return result;
-                }
-
                 if (!Directory.Exists(outputDirectory))
                 {
                     Directory.CreateDirectory(outputDirectory);
@@ -220,7 +178,7 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 使用 SilaGen.exe 从 Feature XML 文件生成客户端代码
+        /// 使用 SilaGeneratorApi 从 Feature XML 文件生成客户端代码
         /// </summary>
         private List<string> GenerateClientFromFile(
             string featureFile,
@@ -233,36 +191,54 @@ namespace SilaGeneratorWpf.Services
 
             try
             {
-                if (string.IsNullOrEmpty(_silaGenPath) || !File.Exists(_silaGenPath))
-                {
-                    throw new InvalidOperationException($"SilaGen.exe 未找到: {_silaGenPath}");
-                }
-
                 // 定义输出文件路径（直接在输出目录中）
                 var interfacePath = Path.Combine(outputDirectory, $"I{featureIdentifier}.cs");
                 var dtoPath = Path.Combine(outputDirectory, $"{featureIdentifier}Dtos.cs");
                 var clientPath = Path.Combine(outputDirectory, $"{featureIdentifier}Client.cs");
 
-                progressCallback?.Invoke($"  → 调用 SilaGen.exe 生成代码...");
+                progressCallback?.Invoke($"  → 调用 SilaGeneratorApi 生成代码...");
                 
-                // 使用 SilaGen.exe 直接生成所有必需的文件
-                // 参数: generate-provider <featureFile> <dtoOutputPath> <clientOutputPath> --namespace <namespace> --client-only
-                var args = $"generate-provider \"{featureFile}\" \"{dtoPath}\" \"{clientPath}\" " +
-                          $"--namespace \"{ns}\" --client-only";
-
-                if (!ExecuteGenerator(args, progressCallback))
+                // 使用 SilaGeneratorApi 生成代码
+                using (var api = new SilaGeneratorApi())
                 {
-                    throw new InvalidOperationException("SilaGen 执行失败");
+                    // 1. 生成接口文件（如果启用）
+                    if (_generateInterface)
+                    {
+                        progressCallback?.Invoke($"  → 生成接口...");
+                        api.GenerateInterface(
+                            featurePath: featureFile,
+                            outputPath: interfacePath,
+                            ns: ns
+                        );
+                    }
+
+                    // 2. 生成 DTOs 和 Client
+                    progressCallback?.Invoke($"  → 生成 DTOs 和 Client...");
+                    api.GenerateProvider(
+                        featurePath: featureFile,
+                        dtoPath: dtoPath,
+                        providerPath: clientPath,
+                        clientPath: null,
+                        ns: ns,
+                        clientOnly: true,
+                        serverOnly: false,
+                        importedNamespaces: null
+                    );
                 }
 
-                progressCallback?.Invoke($"  → SilaGen.exe 执行成功");
+                progressCallback?.Invoke($"  → 代码生成成功");
 
                 // 检查生成的文件
-                var fileList = new[] 
-                { 
+                var fileList = new List<(string filePath, string fileName)>
+                {
                     (dtoPath, $"{featureIdentifier}Dtos.cs"),
                     (clientPath, $"{featureIdentifier}Client.cs")
                 };
+
+                if (_generateInterface)
+                {
+                    fileList.Insert(0, (interfacePath, $"I{featureIdentifier}.cs"));
+                }
 
                 foreach (var (filePath, fileName) in fileList)
                 {
@@ -280,50 +256,10 @@ namespace SilaGeneratorWpf.Services
             catch (Exception ex)
             {
                 progressCallback?.Invoke($"  ✗ 错误: {ex.Message}");
+                throw; // 重新抛出异常以便上层处理
             }
 
             return generatedFiles;
-        }
-
-        /// <summary>
-        /// 执行 SilaGen.exe 命令并检查结果
-        /// </summary>
-        private bool ExecuteGenerator(string arguments, Action<string>? progressCallback)
-        {
-            try
-            {
-                var processInfo = new ProcessStartInfo(_silaGenPath!, arguments)
-                {
-                    RedirectStandardOutput = true,
-                    RedirectStandardError = true,
-                    UseShellExecute = false,
-                    CreateNoWindow = true
-                };
-
-                using var process = Process.Start(processInfo);
-                if (process == null)
-                {
-                    throw new InvalidOperationException("无法启动 SilaGen.exe 进程");
-                }
-
-                var output = process.StandardOutput.ReadToEnd();
-                var error = process.StandardError.ReadToEnd();
-                process.WaitForExit();
-
-                if (process.ExitCode != 0)
-                {
-                    var errorMsg = string.IsNullOrEmpty(error) ? output : error;
-                    progressCallback?.Invoke($"  ✗ 执行失败 (代码 {process.ExitCode}): {errorMsg}");
-                    return false;
-                }
-
-                return true;
-            }
-            catch (Exception ex)
-            {
-                progressCallback?.Invoke($"  ✗ 执行异常: {ex.Message}");
-                return false;
-            }
         }
     }
 

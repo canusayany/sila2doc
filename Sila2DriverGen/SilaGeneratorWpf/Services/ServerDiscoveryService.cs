@@ -1,12 +1,14 @@
+extern alias SilaClientCore;
+using Common.Logging;
+using Microsoft.Extensions.Logging;
+using SilaGeneratorWpf.Models;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using Microsoft.Extensions.Logging;
 using Tecan.Sila2;
-using Tecan.Sila2.Client;
+using SilaClientCore::Tecan.Sila2.Client;
 using Tecan.Sila2.Discovery;
-using SilaGeneratorWpf.Models;
 
 namespace SilaGeneratorWpf.Services
 {
@@ -17,7 +19,7 @@ namespace SilaGeneratorWpf.Services
     {
         private readonly IServerDiscovery _discovery;
         private readonly IServerConnector _connector;
-        private readonly IClientExecutionManager _executionManager;
+        private readonly Tecan.Sila2.Client.IClientExecutionManager _executionManager;
         private readonly Dictionary<Guid, ServerData> _serverDataCache = new();
         private readonly ILogger _logger;
 
@@ -38,9 +40,13 @@ namespace SilaGeneratorWpf.Services
             {
                 timeout ??= TimeSpan.FromSeconds(5);
                 var servers = new List<ServerInfoViewModel>();
-
+                LogManager.Adapter = new Common.Logging.Simple.DebugLoggerFactoryAdapter();
                 try
                 {
+                    var connector = new ServerConnector(new DiscoveryExecutionManager());
+                    var discovery = new ServerDiscovery(connector);
+                    var servers1 = discovery.GetServers(TimeSpan.FromSeconds(3), nic => true);
+
                     _logger.LogInformation($"开始扫描服务器，超时时间: {timeout.Value.TotalSeconds}秒");
                     var discoveredServers = _discovery.GetServers(timeout.Value);
                     _logger.LogInformation($"发现 {discoveredServers.Count()} 个服务器");

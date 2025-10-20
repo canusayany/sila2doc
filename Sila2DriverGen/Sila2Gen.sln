@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "SilaGeneratorWpf", "SilaGeneratorWpf\SilaGeneratorWpf.csproj", "{861C24A9-060F-24CB-2DDA-CD5EA8D6879A}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Generator", "Generator\Generator.csproj", "{5F162047-71C4-A730-10F2-8456E4D1F966}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{861C24A9-060F-24CB-2DDA-CD5EA8D6879A}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{861C24A9-060F-24CB-2DDA-CD5EA8D6879A}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{861C24A9-060F-24CB-2DDA-CD5EA8D6879A}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{861C24A9-060F-24CB-2DDA-CD5EA8D6879A}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5F162047-71C4-A730-10F2-8456E4D1F966}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5F162047-71C4-A730-10F2-8456E4D1F966}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5F162047-71C4-A730-10F2-8456E4D1F966}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5F162047-71C4-A730-10F2-8456E4D1F966}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+EndGlobal
