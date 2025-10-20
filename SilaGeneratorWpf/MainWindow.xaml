@@ -1,0 +1,398 @@
+<Window
+    x:Class="SilaGeneratorWpf.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:local="clr-namespace:SilaGeneratorWpf.Models"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    Title="SiLA2 客户端代码生成器"
+    Width="1200"
+    Height="700"
+    WindowStartupLocation="CenterScreen"
+    mc:Ignorable="d">
+    <Window.Resources>
+        <!--  TreeView Item Style  -->
+        <Style TargetType="TreeViewItem">
+            <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
+            <Setter Property="Padding" Value="2" />
+        </Style>
+    </Window.Resources>
+
+    <Grid Margin="15">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!--  Title  -->
+        <TextBlock
+            Grid.Row="0"
+            Margin="0,0,0,15"
+            HorizontalAlignment="Center"
+            FontSize="24"
+            FontWeight="Bold"
+            Text="SiLA2 客户端代码生成器" />
+
+        <!--  Tab Control  -->
+        <TabControl Grid.Row="1">
+            <!--  Tab 1: 从文件生成  -->
+            <TabItem Header="📁 从文件生成">
+                <Grid Margin="10">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="Auto" />
+                    </Grid.RowDefinitions>
+
+                    <!--  Drop Zone  -->
+                    <Border
+                        Grid.Row="0"
+                        MinHeight="120"
+                        AllowDrop="True"
+                        DragEnter="DropZone_DragEnter"
+                        DragLeave="DropZone_DragLeave"
+                        Drop="DropZone_Drop"
+                        Style="{StaticResource DropZoneStyle}">
+                        <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center">
+                            <TextBlock
+                                HorizontalAlignment="Center"
+                                FontSize="18"
+                                FontWeight="SemiBold"
+                                Foreground="#2c3e50"
+                                Text="📁 拖放 Feature 文件到这里" />
+                            <TextBlock
+                                Margin="0,5,0,0"
+                                HorizontalAlignment="Center"
+                                FontSize="12"
+                                Foreground="#7f8c8d"
+                                Text="支持 .sila.xml 文件，可同时拖放多个文件" />
+                            <Button
+                                Margin="0,10,0,0"
+                                Padding="20,8"
+                                Background="#3498db"
+                                BorderThickness="0"
+                                Click="SelectFiles_Click"
+                                Content="或点击选择文件..."
+                                Foreground="White" />
+                        </StackPanel>
+                    </Border>
+
+                    <!--  File List  -->
+                    <GroupBox
+                        Grid.Row="1"
+                        Margin="0,15,0,0"
+                        Header="已添加的 Feature 文件">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <ListBox
+                                x:Name="FileListBox"
+                                Grid.Row="0"
+                                BorderBrush="#bdc3c7"
+                                BorderThickness="1"
+                                ScrollViewer.VerticalScrollBarVisibility="Auto">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid Margin="5">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
+                                            <TextBlock
+                                                Grid.Column="0"
+                                                VerticalAlignment="Center"
+                                                Text="{Binding}"
+                                                TextTrimming="CharacterEllipsis"
+                                                ToolTip="{Binding}" />
+                                            <Button
+                                                Grid.Column="1"
+                                                Width="30"
+                                                Height="30"
+                                                Margin="10,0,0,0"
+                                                Padding="0"
+                                                Background="#e74c3c"
+                                                BorderThickness="0"
+                                                Click="RemoveFile_Click"
+                                                Content="✕"
+                                                Foreground="White"
+                                                Tag="{Binding}"
+                                                ToolTip="移除此文件" />
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
+
+                            <Button
+                                Grid.Row="1"
+                                Margin="5"
+                                Padding="15,5"
+                                HorizontalAlignment="Right"
+                                Background="#95a5a6"
+                                BorderThickness="0"
+                                Click="ClearFiles_Click"
+                                Content="清空列表"
+                                Foreground="White" />
+                        </Grid>
+                    </GroupBox>
+
+                    <!--  Options  -->
+                    <StackPanel
+                        Grid.Row="2"
+                        Margin="0,15,0,0"
+                        Orientation="Vertical">
+                        <!--  输出目录  -->
+                        <StackPanel
+                            Margin="0,0,0,10"
+                            Cursor="Hand"
+                            Orientation="Horizontal">
+                            <TextBlock
+                                Margin="0,0,5,0"
+                                VerticalAlignment="Center"
+                                Text="输出目录：" />
+                            <TextBox
+                                x:Name="FileGenerationOutputPathTextBox"
+                                Width="400"
+                                Padding="5"
+                                VerticalAlignment="Center"
+                                IsReadOnly="True"
+                                ToolTip="选择代码生成的输出目录" />
+                            <Button
+                              
+                                Click="BrowseFileGenerationOutput_Click"
+                                Content="📁"
+                                FontFamily="Arial Black"
+                                FontSize="16"
+                                ToolTip="选择输出目录" BorderThickness="0,0,0,2" Background="{x:Null}" />
+                        </StackPanel>
+
+                        <!--  命名空间  -->
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock
+                                Margin="0,0,5,0"
+                                VerticalAlignment="Center"
+                                Text="命名空间：" />
+                            <TextBox
+                                x:Name="NamespaceTextBox"
+                                Width="400"
+                                Padding="5"
+                                VerticalAlignment="Center"
+                                Text="Sila2Client"
+                                ToolTip="自定义命名空间，默认为Sila2Client" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!--  Action Buttons  -->
+                    <Grid Grid.Row="3" Margin="0,15,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+
+                        <TextBlock
+                            x:Name="StatusTextBlock"
+                            Grid.Column="0"
+                            VerticalAlignment="Center"
+                            Foreground="#27ae60"
+                            Text="就绪" />
+
+                        <Button
+                            Grid.Column="1"
+                            Background="#16a085"
+                            BorderThickness="0"
+                            Click="OpenOutputFolder_Click"
+                            Content="🗂️ 打开输出文件夹"
+                            Foreground="White"
+                            IsEnabled="{Binding ElementName=GenerateButton, Path=IsEnabled}" />
+
+                        <Button
+                            x:Name="GenerateButton"
+                            Grid.Column="2"
+                            Padding="20,10"
+                            Background="#27ae60"
+                            BorderThickness="0"
+                            Click="GenerateClient_Click"
+                            Content="⚡ 生成客户端代码"
+                            FontWeight="Bold"
+                            Foreground="White" />
+                    </Grid>
+                </Grid>
+            </TabItem>
+
+            <!--  Tab 2: 服务器发现  -->
+            <TabItem Header="🔍 服务器发现">
+                <Grid Margin="0">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition x:Name="SidebarColumn" Width="350" MinWidth="200" MaxWidth="500" />
+                        <ColumnDefinition Width="5" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+
+                    <!--  左侧侧边栏  -->
+                    <Border Grid.Column="0" Background="#F8F9FA" BorderBrush="#DEE2E6" BorderThickness="0,0,1,0">
+                        <Grid>
+                            <Grid.RowDefinitions>
+                                <RowDefinition Height="Auto" />
+                                <RowDefinition Height="*" />
+                                <RowDefinition Height="Auto" />
+                            </Grid.RowDefinitions>
+
+                            <!--  工具栏  -->
+                            <StackPanel Grid.Row="0" Margin="10" Orientation="Vertical">
+                                <Button
+                                    Margin="0,0,0,5"
+                                    Padding="10,8"
+                                    Background="#3498db"
+                                    BorderThickness="0"
+                                    Click="ScanServers_Click"
+                                    Content="🔍 扫描服务器"
+                                    Foreground="White" />
+                                <Button
+                                    Margin="0,0,0,5"
+                                    Padding="10,8"
+                                    Background="#16a085"
+                                    BorderThickness="0"
+                                    Click="RefreshSelected_Click"
+                                    Content="🔄 刷新选中服务器"
+                                    Foreground="White" />
+                                <TextBlock
+                                    x:Name="DiscoveryStatusText"
+                                    Margin="0,5,0,0"
+                                    FontSize="12"
+                                    Foreground="#7f8c8d"
+                                    Text="就绪"
+                                    TextWrapping="Wrap" />
+                            </StackPanel>
+
+                            <!--  服务器树  -->
+                            <TreeView
+                                x:Name="ServerTreeView"
+                                Grid.Row="1"
+                                Margin="10,0"
+                                BorderBrush="#bdc3c7"
+                                BorderThickness="1"
+                                SelectedItemChanged="ServerTreeView_SelectedItemChanged">
+                                <TreeView.Resources>
+                                    <!--  服务器节点模板  -->
+                                    <HierarchicalDataTemplate DataType="{x:Type local:ServerInfoViewModel}" ItemsSource="{Binding Features}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <CheckBox Margin="0,0,5,0" IsChecked="{Binding IsSelected}" />
+                                            <TextBlock Margin="0,0,5,0" Text="🖥️" />
+                                            <TextBlock FontWeight="Bold" Text="{Binding DisplayText}" />
+                                        </StackPanel>
+                                    </HierarchicalDataTemplate>
+
+                                    <!--  特性节点模板  -->
+                                    <HierarchicalDataTemplate DataType="{x:Type local:FeatureInfoViewModel}">
+                                        <StackPanel Orientation="Horizontal">
+                                            <CheckBox Margin="0,0,5,0" IsChecked="{Binding IsSelected}" />
+                                            <TextBlock Margin="0,0,5,0" Text="📦" />
+                                            <TextBlock Text="{Binding DisplayText}" />
+                                        </StackPanel>
+                                    </HierarchicalDataTemplate>
+                                </TreeView.Resources>
+                            </TreeView>
+
+                            <!--  底部操作栏  -->
+                            <StackPanel
+                                Grid.Row="2"
+                                Margin="10"
+                                Orientation="Vertical">
+                                <Button
+                                    Margin="0,0,0,5"
+                                    Padding="10,8"
+                                    Background="#27ae60"
+                                    BorderThickness="0"
+                                    Click="SaveFeatures_Click"
+                                    Content="💾 保存选中特性"
+                                    FontSize="12"
+                                    Foreground="White" />
+                                <Button
+                                    Margin="0,0,0,5"
+                                    Padding="10,8"
+                                    Background="#e67e22"
+                                    BorderThickness="0"
+                                    Click="DirectGenerateClients_Click"
+                                    Content="⚡ 直接生成代码"
+                                    FontSize="12"
+                                    Foreground="White"
+                                    ToolTip="直接从内存生成代码" />
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!--  分隔符（可拖动调整宽度）  -->
+                    <GridSplitter
+                        Grid.Column="1"
+                        Width="5"
+                        HorizontalAlignment="Stretch"
+                        Background="#DEE2E6" />
+
+                    <!--  右侧详情面板  -->
+                    <Grid Grid.Column="2">
+                        <Grid.RowDefinitions>
+                            <RowDefinition Height="Auto" />
+                            <RowDefinition Height="*" />
+                        </Grid.RowDefinitions>
+
+                        <!--  顶部导航条  -->
+                        <Border
+                            Grid.Row="0"
+                            Height="50"
+                            Background="#F8F9FA"
+                            BorderBrush="#DEE2E6"
+                            BorderThickness="0,0,0,1">
+                            <Grid Margin="20,0">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="Auto" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+
+                                <Button
+                                    x:Name="ToggleSidebarButton"
+                                    Grid.Column="0"
+                                    Padding="10,5"
+                                    Background="Transparent"
+                                    BorderThickness="0"
+                                    Click="ToggleSidebar_Click"
+                                    Content="☰"
+                                    FontSize="20"
+                                    ToolTip="显示/隐藏侧边栏" />
+
+                                <TextBlock
+                                    x:Name="DetailTitleText"
+                                    Grid.Column="1"
+                                    Margin="20,0,0,0"
+                                    VerticalAlignment="Center"
+                                    FontSize="18"
+                                    FontWeight="SemiBold"
+                                    Foreground="#212529"
+                                    Text="请选择服务器或特性" />
+                            </Grid>
+                        </Border>
+
+                        <!--  详情内容区域  -->
+                        <ScrollViewer
+                            Grid.Row="1"
+                            Padding="20"
+                            VerticalScrollBarVisibility="Auto">
+                            <StackPanel x:Name="DetailPanel">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    VerticalAlignment="Center"
+                                    FontSize="14"
+                                    Foreground="#95a5a6"
+                                    Text="请从左侧选择服务器或特性查看详细信息" />
+                            </StackPanel>
+                        </ScrollViewer>
+                    </Grid>
+                </Grid>
+            </TabItem>
+        </TabControl>
+    </Grid>
+</Window>

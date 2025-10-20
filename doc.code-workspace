@@ -1,0 +1,11 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../deviceTool/src/ClientDriverGeneration/Doc/sila2示例/BR.ECS.DeviceDriver.Sample.Test"
+		}
+	],
+	"settings": {}
+}

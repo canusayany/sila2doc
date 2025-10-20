@@ -1,0 +1,36 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AssemblyVersion>1.0.9420.18784</AssemblyVersion>
+    <FileVersion>1.0.9420.18784</FileVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Sila2Device.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Tecan.Sila2.Client.NetCore" Version="4.4.1" />
+    <PackageReference Include="Tecan.Sila2.Features.Locking.Client" Version="4.4.1" />
+  </ItemGroup>
+
+  
+  <ItemGroup>
+    <Reference Include="BR.ECS.Executor.Device.Domain.Contracts">
+      <HintPath>.\lib\diana3libsdll\RefLib\BR.ECS.Executor.Device.Domain.Contracts.dll</HintPath>
+    </Reference>
+     <Reference Include="BR.ECS.Executor.Device.Domain.Contracts">
+      <HintPath>.\lib\diana3libsdll\RefLib\BR.PC.Device.Sila2Discovery.dll</HintPath>
+    </Reference>
+    <Reference Include="BR.ECS.Executor.Device.Domain.Share">
+      <HintPath>.\lib\diana3libsdll\RefLib\BR.ECS.Executor.Device.Domain.Share.dll</HintPath>
+    </Reference>
+    <Reference Include="BR.ECS.Executor.Device.Infrastructure">
+      <HintPath>.\lib\diana3libsdll\RefLib\BR.ECS.Executor.Device.Infrastructure.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+</Project>

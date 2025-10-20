@@ -1,0 +1,47 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+    <PropertyGroup>
+        <OutputType>WinExe</OutputType>
+        <TargetFramework>net8.0-windows</TargetFramework>
+        <UseWPF>true</UseWPF>
+        <UseWindowsForms>true</UseWindowsForms>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="CommandLineParser" Version="2.8.0" />
+        <PackageReference Include="Microsoft.Build" Version="16.3.0" ExcludeAssets="runtime" />
+        <PackageReference Include="Microsoft.Build.Framework" Version="16.3.0" ExcludeAssets="runtime" />
+        <PackageReference Include="Microsoft.Build.Locator" Version="1.2.6" />
+        <PackageReference Include="Microsoft.Build.Utilities.Core" Version="16.3.0" ExcludeAssets="runtime" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+        <PackageReference Include="Serilog" Version="3.1.1" />
+        <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
+        <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
+        <PackageReference Include="System.CodeDom" Version="4.6.0" />
+        <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+        <PackageReference Include="Tecan.Sila2.Client" Version="4.4.1" />
+        <PackageReference Include="Tecan.Sila2.DynamicClient" Version="4.4.1" />
+        <PackageReference Include="Tecan.Sila2.NetCore" Version="4.4.1" />
+    </ItemGroup>
+    
+    <!-- SilaGen.exe - 复制到输出目录 -->
+    <ItemGroup>
+      <None Update="reflib\SilaGen.exe">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
+
+
+    <Target Name="CopySilaGenAfterPublish" AfterTargets="Publish" Condition="'$(PublishSingleFile)' == 'true'">
+        <Message Text="[SiLA2 Code Generator] 复制 SilaGen.exe 到发布目录..." Importance="high" />
+        <Copy 
+            SourceFiles="reflib\SilaGen.exe" 
+            DestinationFolder="$(PublishDir)" 
+            SkipUnchangedFiles="true"
+            ContinueOnError="true" />
+        <Message Text="[SiLA2 Code Generator] SilaGen.exe 已复制到: $(PublishDir)" Importance="high" />
+    </Target>
+</Project>
+
