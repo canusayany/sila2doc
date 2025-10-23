@@ -64,40 +64,12 @@ namespace SilaGeneratorWpf.Services
                 progressCallback?.Invoke("复制依赖库...");
                 CopyDependencyLibraries(config);
 
-                // 9. 生成测试控制台（可选）
-                if (config.GenerateTestConsole)
-                {
-                    progressCallback?.Invoke("生成测试控制台...");
-                    GenerateTestConsole(config);
-                }
-
-                // 10. 生成解决方案文件
+                // 9. 生成解决方案文件
                 progressCallback?.Invoke("生成解决方案文件...");
                 GenerateSolutionFile(config);
 
-                // 11. 自动编译项目（可选）
-                if (config.AutoCompile)
-                {
-                    progressCallback?.Invoke("正在编译项目 (Release)...");
-                    var compileResult = CompileProject(config);
-                    
-                    progressCallback?.Invoke("生成完成！");
-                    _logger.LogInformation("D3驱动生成成功");
-                    
-                    var result = new D3DriverGenerationResult
-                    {
-                        Success = true,
-                        Message = $"成功生成 D3 驱动（{config.Features.Count} 个特性，共 {config.Features.Sum(f => f.Methods.Count)} 个方法）"
-                    };
-                    result.CompileSuccess = compileResult.Success;
-                    result.CompileOutput = compileResult.Output;
-                    result.CompileWarnings = compileResult.Warnings;
-                    result.CompileErrors = compileResult.Errors;
-                    return result;
-                }
-
                 progressCallback?.Invoke("生成完成！");
-                _logger.LogInformation("D3驱动生成成功");
+                _logger.LogInformation("D3驱动代码生成成功");
 
                 return new D3DriverGenerationResult
                 {
@@ -399,14 +371,6 @@ MinimumVisualStudioVersion = 10.0.40219.1
 EndProject
 ";
 
-            // 如果有测试控制台，添加测试项目
-            if (config.GenerateTestConsole)
-            {
-                solutionContent += $@"Project(""{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}"") = ""{testProjectName}"", ""{testProjectPath}"", ""{testProjectGuid}""
-EndProject
-";
-            }
-
             // 添加 Global 配置
             solutionContent += @"Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -423,16 +387,6 @@ EndProject
 		{driverProjectGuid}.Release|Any CPU.Build.0 = Release|Any CPU
 ";
 
-            // 测试项目配置
-            if (config.GenerateTestConsole)
-            {
-                solutionContent += $@"		{testProjectGuid}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{testProjectGuid}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{testProjectGuid}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{testProjectGuid}.Release|Any CPU.Build.0 = Release|Any CPU
-";
-            }
-
             solutionContent += @"	EndGlobalSection
 EndGlobal
 ";
@@ -442,17 +396,78 @@ EndGlobal
         }
 
         /// <summary>
-        /// 编译生成的项目
+        /// 编译指定的项目文件（公共方法，用于独立编译）
+        /// </summary>
+        /// <param name="projectPath">项目文件路径（.csproj 或 .sln）</param>
+        /// <param name="progressCallback">进度回调</param>
+        /// <returns>编译结果</returns>
+        public CompilationResult CompileProject(string projectPath, Action<string>? progressCallback = null)
+        {
+            _logger.LogInformation($"开始编译项目: {projectPath}");
+            progressCallback?.Invoke("正在编译项目...");
+
+            try
+            {
+                if (!File.Exists(projectPath))
+                {
+                    return new CompilationResult
+                    {
+                        Success = false,
+                        Message = "项目文件不存在",
+                        ErrorCount = 1
+                    };
+                }
+
+                var workingDirectory = Path.GetDirectoryName(projectPath) ?? Directory.GetCurrentDirectory();
+                var compileResult = CompileProjectInternal(projectPath, workingDirectory, progressCallback);
+
+                // 确定 DLL 路径
+                var projectDir = Path.GetDirectoryName(projectPath);
+                var dllPath = Path.Combine(projectDir!, "bin", "Release");
+
+                return new CompilationResult
+                {
+                    Success = compileResult.Success,
+                    Message = compileResult.Output,
+                    DllPath = dllPath,
+                    ErrorCount = compileResult.Errors,
+                    WarningCount = compileResult.Warnings
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "编译项目失败");
+                return new CompilationResult
+                {
+                    Success = false,
+                    Message = $"编译失败: {ex.Message}\n{ex.StackTrace}",
+                    ErrorCount = 1
+                };
+            }
+        }
+
+        /// <summary>
+        /// 编译生成的项目（内部方法，从配置调用）
         /// </summary>
         private (bool Success, string Output, int Warnings, int Errors) CompileProject(D3DriverGenerationConfig config)
         {
-            _logger.LogInformation("开始编译生成的项目");
+            var projectName = $"{config.Brand}{config.Model}.D3Driver";
+            var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
+            return CompileProjectInternal(projectPath, config.OutputPath, null);
+        }
+
+        /// <summary>
+        /// 编译项目文件的核心实现
+        /// </summary>
+        private (bool Success, string Output, int Warnings, int Errors) CompileProjectInternal(
+            string projectPath, 
+            string workingDirectory,
+            Action<string>? progressCallback = null)
+        {
+            _logger.LogInformation($"编译项目: {projectPath}");
             
             try
             {
-                var projectName = $"{config.Brand}{config.Model}.D3Driver";
-                var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
-                
                 if (!File.Exists(projectPath))
                 {
                     _logger.LogWarning($"项目文件不存在: {projectPath}");
@@ -466,7 +481,7 @@ EndGlobal
                     {
                         FileName = "dotnet",
                         Arguments = $"build \"{projectPath}\" -c Release --no-restore",
-                        WorkingDirectory = config.OutputPath,
+                        WorkingDirectory = workingDirectory,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,
                         UseShellExecute = false,
@@ -529,6 +544,45 @@ EndGlobal
             {
                 _logger.LogError(ex, "编译项目时发生异常");
                 return (false, $"编译异常: {ex.Message}", 0, 1);
+            }
+        }
+
+        /// <summary>
+        /// 重新生成D3Driver.cs文件（用于调整方法特性后重新生成）
+        /// </summary>
+        /// <param name="config">生成配置</param>
+        /// <param name="progressCallback">进度回调</param>
+        /// <returns>生成结果</returns>
+        public D3DriverGenerationResult RegenerateD3Driver(
+            D3DriverGenerationConfig config,
+            Action<string>? progressCallback = null)
+        {
+            try
+            {
+                progressCallback?.Invoke("重新生成 D3Driver.cs...");
+                _logger.LogInformation("重新生成 D3Driver.cs");
+
+                // 生成 D3Driver.cs
+                GenerateD3Driver(config);
+
+                progressCallback?.Invoke("✓ D3Driver.cs 已更新");
+                _logger.LogInformation("D3Driver.cs 重新生成成功");
+
+                return new D3DriverGenerationResult
+                {
+                    Success = true,
+                    Message = "D3Driver.cs 已成功更新"
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "重新生成 D3Driver.cs 失败");
+                return new D3DriverGenerationResult
+                {
+                    Success = false,
+                    Message = ex.Message,
+                    ErrorDetails = ex.StackTrace
+                };
             }
         }
     }

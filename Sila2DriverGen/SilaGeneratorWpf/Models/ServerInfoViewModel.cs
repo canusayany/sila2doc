@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace SilaGeneratorWpf.Models
@@ -15,6 +16,14 @@ namespace SilaGeneratorWpf.Models
         [ObservableProperty]
         private bool _isExpanded;
 
+        /// <summary>
+        /// 是否有部分子项被选中（三态选择）
+        /// false = 未选，null = 半选，true = 全选
+        /// 默认为 false（未选择）
+        /// </summary>
+        [ObservableProperty]
+        private bool? _isPartiallySelected = false;
+
         public string ServerName { get; set; } = string.Empty;
         public string IPAddress { get; set; } = string.Empty;
         public int Port { get; set; }
@@ -25,12 +34,46 @@ namespace SilaGeneratorWpf.Models
 
         public ObservableCollection<FeatureInfoViewModel> Features { get; set; } = new();
 
+        /// <summary>
+        /// 用于回调通知的委托
+        /// </summary>
+        public Action<ServerInfoViewModel, FeatureInfoViewModel>? OnFeatureSelectionChanged { get; set; }
+
         partial void OnIsSelectedChanged(bool value)
         {
-            // 同步选择所有特性
+            // 同步选择所有特性（不触发回调，避免循环）
             foreach (var feature in Features)
             {
-                feature.IsSelected = value;
+                feature.SilentSetSelection(value);
+            }
+            
+            UpdatePartialSelection();
+        }
+
+        /// <summary>
+        /// 更新父节点的部分选中状态
+        /// </summary>
+        public void UpdatePartialSelection()
+        {
+            if (!Features.Any())
+            {
+                IsPartiallySelected = false;  // 没有子项时默认未选
+                return;
+            }
+
+            var selectedCount = Features.Count(f => f.IsSelected);
+            
+            if (selectedCount == 0)
+            {
+                IsPartiallySelected = false;  // 未选
+            }
+            else if (selectedCount == Features.Count)
+            {
+                IsPartiallySelected = true;  // 全选
+            }
+            else
+            {
+                IsPartiallySelected = null;  // 半选
             }
         }
 
@@ -62,6 +105,8 @@ namespace SilaGeneratorWpf.Models
     /// </summary>
     public partial class FeatureInfoViewModel : ObservableObject
     {
+        private bool _suppressNotification = false;
+
         [ObservableProperty]
         private bool _isSelected;
 
@@ -76,12 +121,46 @@ namespace SilaGeneratorWpf.Models
         public string FeatureXml { get; set; } = string.Empty;
 
         public ServerInfoViewModel? ParentServer { get; set; }
+        
+        /// <summary>
+        /// 对应的本地特性节点（如果是本地特性）
+        /// </summary>
+        public FeatureTreeNodeBase? ParentNode { get; set; }
 
         public ObservableCollection<CommandInfoViewModel> Commands { get; set; } = new();
         public ObservableCollection<PropertyInfoViewModel> Properties { get; set; } = new();
         public ObservableCollection<MetadataInfoViewModel> Metadata { get; set; } = new();
 
         public string DisplayText => $"{DisplayName ?? Identifier} (v{Version})";
+
+        partial void OnIsSelectedChanged(bool value)
+        {
+            if (_suppressNotification)
+                return;
+
+            // 通知父节点更新状态
+            if (ParentServer != null)
+            {
+                ParentServer.UpdatePartialSelection();
+                ParentServer.OnFeatureSelectionChanged?.Invoke(ParentServer, this);
+            }
+            
+            // 更新本地特性节点的父节点状态
+            if (ParentNode != null)
+            {
+                ParentNode.UpdatePartialSelection();
+            }
+        }
+
+        /// <summary>
+        /// 静默设置选中状态（不触发通知）
+        /// </summary>
+        public void SilentSetSelection(bool value)
+        {
+            _suppressNotification = true;
+            IsSelected = value;
+            _suppressNotification = false;
+        }
     }
 
     /// <summary>

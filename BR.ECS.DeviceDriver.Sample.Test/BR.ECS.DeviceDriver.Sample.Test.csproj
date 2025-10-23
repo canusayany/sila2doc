@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <AssemblyVersion>1.0.9420.18784</AssemblyVersion>
     <FileVersion>1.0.9420.18784</FileVersion>
+    <GenerateDocumentationFile>True</GenerateDocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>

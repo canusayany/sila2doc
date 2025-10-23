@@ -48,14 +48,29 @@ namespace SilaGeneratorWpf.Models
         public List<ClientFeatureInfo> Features { get; set; } = new();
 
         /// <summary>
-        /// 是否生成测试控制台
+        /// 是否为在线服务器来源（true=在线服务器，false=本地特性文件）
         /// </summary>
-        public bool GenerateTestConsole { get; set; } = true;
+        public bool IsOnlineSource { get; set; }
 
         /// <summary>
-        /// 是否自动编译生成的项目
+        /// 在线服务器 UUID
         /// </summary>
-        public bool AutoCompile { get; set; } = true;
+        public string? ServerUuid { get; set; }
+
+        /// <summary>
+        /// 本地特性 XML 文件路径列表
+        /// </summary>
+        public List<string>? LocalFeatureXmlPaths { get; set; }
+
+        /// <summary>
+        /// 服务器 IP 地址（从在线扫描获取或使用默认值）
+        /// </summary>
+        public string? ServerIp { get; set; }
+
+        /// <summary>
+        /// 服务器端口（从在线扫描获取或使用默认值）
+        /// </summary>
+        public int? ServerPort { get; set; }
     }
 }
 

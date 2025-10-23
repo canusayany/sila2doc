@@ -4,253 +4,392 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-    d:DesignHeight="600"
-    d:DesignWidth="1000"
+    xmlns:local="clr-namespace:SilaGeneratorWpf.Models"
+    xmlns:converters="clr-namespace:SilaGeneratorWpf.Converters"
+    xmlns:behaviors="clr-namespace:SilaGeneratorWpf.Behaviors"
+    xmlns:i="http://schemas.microsoft.com/xaml/behaviors"
+    d:DesignHeight="700"
+    d:DesignWidth="1200"
     mc:Ignorable="d">
-    <Grid Margin="10">
-        <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <!--  客户端代码选择  -->
-            <RowDefinition Height="Auto" />
-            <!--  设备信息配置  -->
-            <RowDefinition Height="Auto" />
-            <!--  生成选项  -->
-            <RowDefinition Height="*" />
-            <!--  特性方法预览  -->
-            <RowDefinition Height="Auto" />
-            <!--  操作按钮  -->
-        </Grid.RowDefinitions>
+    <UserControl.Resources>
+        <converters:BoolToVisibilityConverter x:Key="BoolToVisibilityConverter" />
+        <converters:InverseBoolToVisibilityConverter x:Key="InverseBoolToVisibilityConverter" />
+        <converters:CountToVisibilityConverter x:Key="CountToVisibilityConverter" />
+    </UserControl.Resources>
+    <Grid>
+        <Grid.ColumnDefinitions>
+            <!--  左侧栏（可折叠）  -->
+            <ColumnDefinition Width="{Binding SidebarWidthValue}" MinWidth="0" MaxWidth="450" />
+            <!--  GridSplitter  -->
+            <ColumnDefinition Width="5" />
+            <!--  主区域  -->
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <!--  第一部分：客户端代码选择  -->
-        <GroupBox
-            Grid.Row="0"
-            Margin="0,0,0,10"
-            Header="1. 选择客户端代码目录">
-            <StackPanel Margin="10">
-                <Grid>
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBox
-                        Grid.Column="0"
-                        Padding="5"
-                        VerticalAlignment="Center"
-                        IsReadOnly="True"
-                        Text="{Binding ClientCodePath, Mode=TwoWay}" />
-                    <Button
-                        Grid.Column="1"
-                        Margin="5,0,0,0"
-                        Padding="10,5"
-                        Command="{Binding BrowseClientCodeCommand}"
-                        Content="📁 浏览" />
-                </Grid>
-                <TextBlock
-                    Margin="0,5,0,0"
-                    Foreground="#7f8c8d"
-                    Text="{Binding DetectedFeaturesText}" />
-            </StackPanel>
-        </GroupBox>
-
-        <!--  第二部分：设备信息  -->
-        <GroupBox
-            Grid.Row="1"
-            Margin="0,0,0,10"
-            Header="2. 配置设备信息">
-            <Grid Margin="10">
+        <!--  左侧栏：特性选择  -->
+        <Border
+            Grid.Column="0"
+            Background="#F8F9FA"
+            BorderBrush="#DEE2E6"
+            BorderThickness="0,0,1,0"
+            Visibility="{Binding IsSidebarVisible, Converter={StaticResource BoolToVisibilityConverter}}">
+            <Grid>
                 <Grid.RowDefinitions>
                     <RowDefinition Height="Auto" />
+                    <!--  标题栏  -->
                     <RowDefinition Height="Auto" />
+                    <!--  工具栏  -->
+                    <RowDefinition Height="250" />
+                    <!--  在线服务器树（固定高度）  -->
+                    <RowDefinition Height="*" />
+                    <!--  本地特性树（条件显示）  -->
                 </Grid.RowDefinitions>
-                <Grid.ColumnDefinitions>
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                    <ColumnDefinition Width="Auto" />
-                    <ColumnDefinition Width="*" />
-                </Grid.ColumnDefinitions>
 
-                <TextBlock
-                    Grid.Row="0"
-                    Grid.Column="0"
-                    Margin="0,0,5,5"
-                    VerticalAlignment="Center"
-                    Text="品牌：" />
-                <TextBox
-                    Grid.Row="0"
-                    Grid.Column="1"
-                    Margin="0,0,10,5"
-                    Padding="5"
-                    Text="{Binding DeviceBrand, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <!--  标题栏（VS2022风格，带折叠按钮）  -->
+                <Border 
+                    Grid.Row="0" 
+                    Background="#E8EAED" 
+                    BorderBrush="#DEE2E6" 
+                    BorderThickness="0,0,0,1"
+                    Padding="10,5">
+                    <Grid>
+                        <TextBlock
+                            Text="特性选择"
+                            FontSize="14"
+                            FontWeight="SemiBold"
+                            VerticalAlignment="Center"
+                            Foreground="#2C3E50" />
+                        
+                        <!--  图钉按钮（右侧）  -->
+                        <Button
+                            HorizontalAlignment="Right"
+                            Width="20"
+                            Height="20"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            Command="{Binding ToggleSidebarCommand}"
+                            ToolTip="隐藏侧边栏 (双击分隔线也可切换)"
+                            Cursor="Hand">
+                            <TextBlock 
+                                Text="📌" 
+                                FontSize="12" 
+                                VerticalAlignment="Center"
+                                HorizontalAlignment="Center">
+                                <TextBlock.RenderTransform>
+                                    <RotateTransform Angle="-45" CenterX="6" CenterY="6"/>
+                                </TextBlock.RenderTransform>
+                            </TextBlock>
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="Transparent" />
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#D0D3D6" />
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
+                    </Grid>
+                </Border>
 
-                <TextBlock
-                    Grid.Row="0"
-                    Grid.Column="2"
-                    Margin="0,0,5,5"
-                    VerticalAlignment="Center"
-                    Text="型号：" />
-                <TextBox
-                    Grid.Row="0"
-                    Grid.Column="3"
-                    Margin="0,0,0,5"
-                    Padding="5"
-                    Text="{Binding DeviceModel, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                <!--  工具栏  -->
+                <StackPanel
+                    Grid.Row="1"
+                    Margin="10"
+                    Orientation="Vertical">
 
-                <TextBlock
-                    Grid.Row="1"
-                    Grid.Column="0"
-                    Margin="0,0,5,0"
-                    VerticalAlignment="Center"
-                    Text="类型：" />
-                <TextBox
-                    Grid.Row="1"
-                    Grid.Column="1"
-                    Margin="0,0,10,0"
-                    Padding="5"
-                    Text="{Binding DeviceType, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                        <Button
+                            Margin="0,0,5,0"
+                            Padding="8,6"
+                            Background="#3498db"
+                            BorderThickness="0"
+                            Command="{Binding ScanServersCommand}"
+                            Content="🔍 扫描服务器"
+                            Foreground="White"
+                            ToolTip="扫描网络中的SiLA2服务器" />
 
-                <TextBlock
-                    Grid.Row="1"
-                    Grid.Column="2"
-                    Margin="0,0,5,0"
-                    VerticalAlignment="Center"
-                    Text="开发者：" />
-                <TextBox
-                    Grid.Row="1"
-                    Grid.Column="3"
-                    Padding="5"
-                    Text="{Binding DeveloperName, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
+                        <Button
+                            Margin="0,0,5,0"
+                            Padding="8,6"
+                            Background="#9b59b6"
+                            BorderThickness="0"
+                            Command="{Binding AddLocalFeaturesCommand}"
+                            Content="📁 添加本地特性"
+                            Foreground="White"
+                            ToolTip="导入本地.sila.xml特性文件" />
+                        
+                        <Button
+                            Padding="8,6"
+                            Background="#16a085"
+                            BorderThickness="0"
+                            Command="{Binding ExportFeaturesCommand}"
+                            Content="📤 导出特性"
+                            Foreground="White"
+                            ToolTip="导出选中的特性文件到指定文件夹" />
+                    </StackPanel>
+                </StackPanel>
+
+                <!--  在线服务器树（固定高度250px）  -->
+                <GroupBox
+                    Grid.Row="2"
+                    Header="在线服务器"
+                    Margin="10,0,10,10">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto" Height="210">
+                        <TreeView ItemsSource="{Binding OnlineServers}">
+                        <TreeView.Resources>
+                            <!--  服务器节点模板（三态CheckBox）  -->
+                            <HierarchicalDataTemplate DataType="{x:Type local:ServerInfoViewModel}" ItemsSource="{Binding Features}">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox
+                                        Margin="0,0,5,0"
+                                        IsThreeState="True"
+                                        IsChecked="{Binding IsPartiallySelected}"
+                                        ToolTip="点击切换：未选→全选→未选，半选→未选">
+                                        <i:Interaction.Behaviors>
+                                            <behaviors:ThreeStateTreeViewBehavior />
+                                        </i:Interaction.Behaviors>
+                                    </CheckBox>
+                                    <TextBlock Margin="0,0,5,0" Text="🖥️" />
+                                    <TextBlock Text="{Binding DisplayText}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                            <!--  特性节点模板  -->
+                            <DataTemplate DataType="{x:Type local:FeatureInfoViewModel}">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox Margin="0,0,5,0" IsChecked="{Binding IsSelected}" />
+                                    <TextBlock Margin="0,0,5,0" Text="📦" />
+                                    <TextBlock Text="{Binding DisplayText}" />
+                                </StackPanel>
+                            </DataTemplate>
+                        </TreeView.Resources>
+                        </TreeView>
+                    </ScrollViewer>
+                </GroupBox>
+
+                <!--  本地特性树（条件显示）  -->
+                <GroupBox
+                    Grid.Row="3"
+                    Header="本地特性"
+                    Margin="10,0,10,10"
+                    Visibility="{Binding LocalNodes.Count, Converter={StaticResource CountToVisibilityConverter}}">
+                    <ScrollViewer VerticalScrollBarVisibility="Auto">
+                        <TreeView ItemsSource="{Binding LocalNodes}">
+                        <TreeView.Resources>
+                            <!--  本地节点模板  -->
+                            <HierarchicalDataTemplate DataType="{x:Type local:LocalFeatureNodeViewModel}" ItemsSource="{Binding Files}">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox
+                                        Margin="0,0,5,0"
+                                        IsThreeState="True"
+                                        IsChecked="{Binding IsPartiallySelected}"
+                                        ToolTip="点击切换：未选→全选→未选，半选→未选">
+                                        <i:Interaction.Behaviors>
+                                            <behaviors:ThreeStateTreeViewBehavior />
+                                        </i:Interaction.Behaviors>
+                                    </CheckBox>
+                                    <TextBlock Margin="0,0,5,0" Text="📂" />
+                                    <TextBlock Text="{Binding NodeName}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                            <!--  本地特性文件模板  -->
+                            <HierarchicalDataTemplate DataType="{x:Type local:LocalFeatureFileViewModel}">
+                                <StackPanel Orientation="Horizontal">
+                                    <CheckBox Margin="0,0,5,0" IsChecked="{Binding IsSelected}" />
+                                    <TextBlock Margin="0,0,5,0" Text="📄" />
+                                    <TextBlock Text="{Binding FileName}" />
+                                </StackPanel>
+                            </HierarchicalDataTemplate>
+                        </TreeView.Resources>
+                        <TreeView.ContextMenu>
+                            <ContextMenu>
+                                <MenuItem Command="{Binding DeleteLocalNodeCommand}" Header="删除节点" />
+                            </ContextMenu>
+                        </TreeView.ContextMenu>
+                        </TreeView>
+                    </ScrollViewer>
+                </GroupBox>
             </Grid>
-        </GroupBox>
+        </Border>
 
-        <!--  第三部分：生成选项  -->
-        <GroupBox
-            Grid.Row="2"
-            Margin="0,0,0,10"
-            Header="3. 生成选项">
-            <StackPanel Margin="10">
-                <Grid Margin="0,0,0,5">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                        <ColumnDefinition Width="Auto" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        Margin="0,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="输出目录：" />
-                    <TextBox
-                        Grid.Column="1"
-                        Padding="5"
-                        IsReadOnly="True"
-                        Text="{Binding D3OutputPath, Mode=TwoWay}" />
-                    <Button
-                        Grid.Column="2"
-                        Margin="5,0,0,0"
-                        Padding="10,5"
-                        Command="{Binding BrowseD3OutputCommand}"
-                        Content="📁" />
-                </Grid>
-
-                <Grid Margin="0,0,0,5">
-                    <Grid.ColumnDefinitions>
-                        <ColumnDefinition Width="Auto" />
-                        <ColumnDefinition Width="*" />
-                    </Grid.ColumnDefinitions>
-                    <TextBlock
-                        Grid.Column="0"
-                        Margin="0,0,5,0"
-                        VerticalAlignment="Center"
-                        Text="命名空间：" />
-                    <TextBox
-                        Grid.Column="1"
-                        Padding="5"
-                        Text="{Binding D3Namespace, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}" />
-                </Grid>
-
-                <CheckBox
-                    Content="自动编译生成的项目 (Release)"
-                    IsChecked="{Binding AutoCompile}"
-                    Margin="0,0,0,5" />
-
-                <CheckBox
-                    Content="生成测试控制台项目（可选）"
-                    IsChecked="{Binding GenerateTestConsole}" />
+        <!--  GridSplitter（可拖动调整宽度，双击切换侧边栏）  -->
+        <GridSplitter
+            Grid.Column="1"
+            Width="5"
+            HorizontalAlignment="Stretch"
+            Background="#DEE2E6"
+            MouseDoubleClick="GridSplitter_MouseDoubleClick"
+            Cursor="SizeWE"
+            ToolTip="拖动调整宽度，双击隐藏侧边栏"
+            Visibility="{Binding IsSidebarVisible, Converter={StaticResource BoolToVisibilityConverter}}" />
+        
+        <!--  侧边栏隐藏时的显示按钮（竖向文字）  -->
+        <Button
+            Grid.Column="0"
+            Grid.ColumnSpan="2"
+            Width="30"
+            Height="120"
+            HorizontalAlignment="Left"
+            VerticalAlignment="Center"
+            Background="#F8F9FA"
+            BorderThickness="1"
+            BorderBrush="#DEE2E6"
+            Command="{Binding ToggleSidebarCommand}"
+            Cursor="Hand"
+            ToolTip="显示侧边栏"
+            Visibility="{Binding IsSidebarVisible, Converter={StaticResource InverseBoolToVisibilityConverter}}">
+            <StackPanel Orientation="Vertical" HorizontalAlignment="Center">
+                <TextBlock 
+                    Text="📌" 
+                    FontSize="14"
+                    Margin="0,5,0,5"
+                    HorizontalAlignment="Center">
+                    <TextBlock.RenderTransform>
+                        <RotateTransform Angle="45" CenterX="7" CenterY="7"/>
+                    </TextBlock.RenderTransform>
+                </TextBlock>
+                <TextBlock 
+                    Text="特" 
+                    FontSize="12" 
+                    FontWeight="SemiBold"
+                    Foreground="#2C3E50"
+                    HorizontalAlignment="Center"
+                    Margin="0,2"/>
+                <TextBlock 
+                    Text="性" 
+                    FontSize="12" 
+                    FontWeight="SemiBold"
+                    Foreground="#2C3E50"
+                    HorizontalAlignment="Center"
+                    Margin="0,2"/>
+                <TextBlock 
+                    Text="选" 
+                    FontSize="12" 
+                    FontWeight="SemiBold"
+                    Foreground="#2C3E50"
+                    HorizontalAlignment="Center"
+                    Margin="0,2"/>
+                <TextBlock 
+                    Text="择" 
+                    FontSize="12" 
+                    FontWeight="SemiBold"
+                    Foreground="#2C3E50"
+                    HorizontalAlignment="Center"
+                    Margin="0,2"/>
             </StackPanel>
-        </GroupBox>
+            <Button.Style>
+                <Style TargetType="Button">
+                    <Setter Property="Background" Value="#F8F9FA" />
+                    <Style.Triggers>
+                        <Trigger Property="IsMouseOver" Value="True">
+                            <Setter Property="Background" Value="#E8EAED" />
+                        </Trigger>
+                    </Style.Triggers>
+                </Style>
+            </Button.Style>
+        </Button>
 
-        <!--  第四部分：特性方法预览  -->
-        <GroupBox
-            Grid.Row="3"
-            Margin="0,0,0,10"
-            Header="4. 特性方法预览">
-            <DataGrid
-                AlternatingRowBackground="#F8F9FA"
-                AutoGenerateColumns="False"
-                GridLinesVisibility="Horizontal"
-                HeadersVisibility="Column"
-                IsReadOnly="True"
-                ItemsSource="{Binding MethodPreviewData}">
-                <DataGrid.Columns>
-                    <DataGridTextColumn
-                        Width="150"
-                        Binding="{Binding FeatureName}"
-                        Header="特性名称" />
-                    <DataGridTextColumn
-                        Width="200"
-                        Binding="{Binding MethodName}"
-                        Header="方法名称" />
-                    <DataGridTextColumn
-                        Width="100"
-                        Binding="{Binding MethodType}"
-                        Header="类型" />
-                    <DataGridTextColumn
-                        Width="100"
-                        Binding="{Binding ReturnType}"
-                        Header="返回值" />
-                    <DataGridTextColumn
-                        Width="*"
-                        Binding="{Binding Description}"
-                        Header="说明" />
-                </DataGrid.Columns>
-            </DataGrid>
-        </GroupBox>
+        <!--  主区域（移除方法预览和设备信息输入）  -->
+        <Grid Grid.Column="2" Margin="10">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <!--  过程日志  -->
+                <RowDefinition Height="*" />
+                <!--  项目信息  -->
+                <RowDefinition Height="Auto" />
+                <!--  操作按钮  -->
+            </Grid.RowDefinitions>
 
-        <!--  操作按钮  -->
-        <Grid Grid.Row="4">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
+            <!--  过程信息显示区域  -->
+            <Expander
+                Grid.Row="0"
+                Header="生成过程信息"
+                IsExpanded="True"
+                Margin="0,0,0,10">
+                <TextBox
+                    Height="200"
+                    FontFamily="Consolas"
+                    IsReadOnly="True"
+                    Text="{Binding ProcessLog, Mode=OneWay}"
+                    TextWrapping="Wrap"
+                    Foreground="{Binding ProcessLogColor}"
+                    VerticalScrollBarVisibility="Auto" />
+            </Expander>
 
-            <TextBlock
-                Grid.Column="0"
-                VerticalAlignment="Center"
-                Foreground="{Binding StatusColor}"
-                Text="{Binding StatusMessage}" />
+            <!--  项目信息显示区域  -->
+            <GroupBox
+                Grid.Row="1"
+                Header="项目信息"
+                Margin="0,0,0,10">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <TextBlock
+                        Text="{Binding ProjectInfoText}"
+                        TextWrapping="Wrap"
+                        Padding="10"
+                        FontFamily="Consolas" />
+                </ScrollViewer>
+            </GroupBox>
 
-            <Button
-                Grid.Column="1"
-                Margin="0,0,5,0"
-                Padding="15,8"
-                Background="#16a085"
-                BorderThickness="0"
-                Command="{Binding OpenD3OutputFolderCommand}"
-                Content="🗂️ 打开输出文件夹"
-                Foreground="White" />
+            <!--  操作按钮（5个）  -->
+            <WrapPanel
+                Grid.Row="2"
+                HorizontalAlignment="Right"
+                Orientation="Horizontal">
+                <Button
+                    Margin="5"
+                    Padding="10,5"
+                    Background="#16a085"
+                    BorderThickness="0"
+                    Command="{Binding OpenProjectDirectoryCommand}"
+                    Content="🗂️ 打开项目目录"
+                    Foreground="White"
+                    ToolTip="打开生成的项目目录" />
 
-            <Button
-                Grid.Column="2"
-                Padding="20,10"
-                Background="#27ae60"
-                BorderThickness="0"
-                Command="{Binding GenerateD3DriverCommand}"
-                Content="⚡ 生成D3驱动"
-                FontWeight="Bold"
-                Foreground="White" />
+                <Button
+                    Margin="5"
+                    Padding="10,5"
+                    Background="#8e44ad"
+                    BorderThickness="0"
+                    Command="{Binding OpenDllDirectoryCommand}"
+                    Content="📦 打开DLL目录"
+                    Foreground="White"
+                    ToolTip="打开编译输出的DLL目录" />
+
+                <Button
+                    Margin="5"
+                    Padding="10,5"
+                    Background="#27ae60"
+                    BorderThickness="0"
+                    Command="{Binding GenerateD3ProjectCommand}"
+                    Content="✨ 生成D3项目"
+                    Foreground="White"
+                    FontWeight="Bold"
+                    ToolTip="生成客户端代码和D3驱动代码（不编译）" />
+
+                <Button
+                    Margin="5"
+                    Padding="10,5"
+                    Background="#2980b9"
+                    BorderThickness="0"
+                    Command="{Binding CompileD3ProjectCommand}"
+                    Content="🔨 编译D3项目"
+                    Foreground="White"
+                    FontWeight="Bold"
+                    IsEnabled="{Binding CanCompile}"
+                    ToolTip="编译已生成的项目（需要先生成）" />
+
+                <Button
+                    Margin="5"
+                    Padding="10,5"
+                    Background="#e67e22"
+                    BorderThickness="0"
+                    Command="{Binding AdjustMethodAttributesCommand}"
+                    Content="🔧 调整方法特性"
+                    Foreground="White"
+                    Visibility="{Binding CanAdjustMethods, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTip="打开方法预览与特性调整窗口" />
+            </WrapPanel>
         </Grid>
     </Grid>
 </UserControl>
-
-

@@ -67,13 +67,33 @@ namespace SilaGeneratorWpf.Models
     /// <summary>
     /// 方法预览数据（用于 DataGrid）
     /// </summary>
-    public class MethodPreviewData
+    public partial class MethodPreviewData : CommunityToolkit.Mvvm.ComponentModel.ObservableObject
     {
-        public string FeatureName { get; set; } = string.Empty;
-        public string MethodName { get; set; } = string.Empty;
-        public string MethodType { get; set; } = string.Empty;
-        public string ReturnType { get; set; } = string.Empty;
-        public string Description { get; set; } = string.Empty;
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private string _featureName = string.Empty;
+
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private string _methodName = string.Empty;
+
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private string _methodType = string.Empty;
+
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private string _returnType = string.Empty;
+
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private string _description = string.Empty;
+
+        /// <summary>
+        /// 是否为维护方法（勾选后生成 MethodMaintenance 特性，否则生成 MethodOperations 特性）
+        /// </summary>
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private bool _isMaintenance = false;
+
+        /// <summary>
+        /// 原始方法信息引用（用于同步）
+        /// </summary>
+        public MethodGenerationInfo? MethodInfo { get; set; }
     }
 }
 
