@@ -45,6 +45,11 @@
             <TabItem Header="🔍 服务器发现">
                 <views:ServerDiscoveryView DataContext="{Binding ServerDiscoveryViewModel}" />
             </TabItem>
+
+            <!--  Tab 3: 生成D3驱动  -->
+            <TabItem Header="🎯 生成D3驱动">
+                <views:D3DriverView DataContext="{Binding D3DriverViewModel}" />
+            </TabItem>
         </TabControl>
     </Grid>
 </Window>

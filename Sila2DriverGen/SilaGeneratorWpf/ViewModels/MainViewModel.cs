@@ -14,6 +14,7 @@ namespace SilaGeneratorWpf.ViewModels
 
         public FileGenerationViewModel FileGenerationViewModel { get; }
         public ServerDiscoveryViewModel ServerDiscoveryViewModel { get; }
+        public D3DriverViewModel D3DriverViewModel { get; }
 
         public MainViewModel()
         {
@@ -22,6 +23,7 @@ namespace SilaGeneratorWpf.ViewModels
 
             FileGenerationViewModel = new FileGenerationViewModel();
             ServerDiscoveryViewModel = new ServerDiscoveryViewModel();
+            D3DriverViewModel = new D3DriverViewModel();
         }
 
         public void OnClosing()
