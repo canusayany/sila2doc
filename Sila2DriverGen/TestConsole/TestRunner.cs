@@ -73,8 +73,8 @@ namespace Sila2DriverGen.TestConsole
 
                 if (!exit)
                 {
-                    Console.WriteLine("\n按任意键继续...");
-                    Console.ReadKey();
+                    //Console.WriteLine("\n按任意键继续...");
+                    //Console.ReadKey();
                     Console.Clear();
                     ConsoleHelper.PrintHeader();
                 }

@@ -25,8 +25,8 @@ namespace Sila2DriverGen.TestConsole
                 
                 Console.WriteLine();
                 Console.WriteLine($"自动化测试结果: {(success ? "通过" : "失败")}");
-                Console.WriteLine("\n按任意键退出...");
-                Console.ReadKey();
+                //Console.WriteLine("\n按任意键退出...");
+                //Console.ReadKey();
                 Environment.Exit(success ? 0 : 1);
                 return;
             }
@@ -34,8 +34,8 @@ namespace Sila2DriverGen.TestConsole
             var runner = new TestRunner();
             await runner.RunAsync();
             
-            Console.WriteLine("\n按任意键退出...");
-            Console.ReadKey();
+           // Console.WriteLine("\n按任意键退出...");
+           // Console.ReadKey();
         }
     }
 }

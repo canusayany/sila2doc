@@ -239,27 +239,12 @@ global using {clientCodeNamespace};");
                 TypeAttributes = System.Reflection.TypeAttributes.Public
             };
 
-            // IP 属性
-            var ipProperty = new CodeMemberProperty
-            {
-                Name = "IP",
-                Type = new CodeTypeReference(typeof(string)),
-                Attributes = MemberAttributes.Public,
-                HasGet = true,
-                HasSet = true
-            };
-            connectionInfoClass.Members.Add(ipProperty);
-
-            // Port 属性
-            var portProperty = new CodeMemberProperty
-            {
-                Name = "Port",
-                Type = new CodeTypeReference(typeof(int)),
-                Attributes = MemberAttributes.Public,
-                HasGet = true,
-                HasSet = true
-            };
-            connectionInfoClass.Members.Add(portProperty);
+            // 使用CodeSnippetTypeMember直接生成自动属性
+            var propertiesSnippet = new CodeSnippetTypeMember(@"
+        public string IP { get; set; }
+        public int Port { get; set; }");
+            
+            connectionInfoClass.Members.Add(propertiesSnippet);
 
             return connectionInfoClass;
         }

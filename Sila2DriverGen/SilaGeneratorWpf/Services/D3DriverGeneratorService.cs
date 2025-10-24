@@ -249,8 +249,7 @@ namespace SilaGeneratorWpf.Services
 
   <ItemGroup>
     <PackageReference Include=""Tecan.Sila2.Client.NetCore"" Version=""4.4.1"" />
-    <PackageReference Include=""Tecan.Sila2.Discovery"" Version=""4.4.1"" />
-    <PackageReference Include=""Tecan.Sila2.Locking"" Version=""4.4.1"" />
+    <PackageReference Include=""Tecan.Sila2.Features.Locking.Client"" Version=""4.4.1"" />
     <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
   </ItemGroup>
 
@@ -267,6 +266,12 @@ namespace SilaGeneratorWpf.Services
     <Reference Include=""BR.PC.Device.Sila2Discovery"">
       <HintPath>lib\BR.PC.Device.Sila2Discovery.dll</HintPath>
     </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Remove=""GeneratedClient\**"" />
+    <EmbeddedResource Remove=""GeneratedClient\**"" />
+    <None Remove=""GeneratedClient\**"" />
   </ItemGroup>
 
 </Project>
@@ -474,13 +479,42 @@ EndGlobal
                     return (false, "项目文件不存在", 0, 1);
                 }
                 
+                // 先执行 dotnet restore
+                _logger.LogInformation("开始还原NuGet包...");
+                progressCallback?.Invoke("还原NuGet包...");
+                
+                var restoreProcess = new System.Diagnostics.Process
+                {
+                    StartInfo = new System.Diagnostics.ProcessStartInfo
+                    {
+                        FileName = "dotnet",
+                        Arguments = $"restore \"{projectPath}\"",
+                        WorkingDirectory = workingDirectory,
+                        RedirectStandardOutput = true,
+                        RedirectStandardError = true,
+                        UseShellExecute = false,
+                        CreateNoWindow = true
+                    }
+                };
+                
+                restoreProcess.Start();
+                restoreProcess.WaitForExit(60000); // 等待最多60秒
+                
+                if (restoreProcess.ExitCode != 0)
+                {
+                    _logger.LogWarning("NuGet包还原失败，尝试继续编译...");
+                }
+                
                 // 使用 dotnet build 编译
+                _logger.LogInformation("开始编译项目...");
+                progressCallback?.Invoke("编译项目...");
+                
                 var process = new System.Diagnostics.Process
                 {
                     StartInfo = new System.Diagnostics.ProcessStartInfo
                     {
                         FileName = "dotnet",
-                        Arguments = $"build \"{projectPath}\" -c Release --no-restore",
+                        Arguments = $"build \"{projectPath}\" -c Release",
                         WorkingDirectory = workingDirectory,
                         RedirectStandardOutput = true,
                         RedirectStandardError = true,

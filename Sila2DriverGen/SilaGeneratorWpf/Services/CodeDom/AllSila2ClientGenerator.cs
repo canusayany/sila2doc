@@ -156,13 +156,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 new CodeObjectCreateExpression("ServerConnector",
                     new CodeObjectCreateExpression("DiscoveryExecutionManager"))));
 
-            // executionManagerFactory = new ExecutionManagerFactory(...);
-            constructor.Statements.Add(new CodeAssignStatement(
-                new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "executionManagerFactory"),
-                new CodeObjectCreateExpression("ExecutionManagerFactory",
-                    new CodeArrayCreateExpression("IClientRequestInterceptor",
-                        new CodeObjectCreateExpression("LockingInterceptor",
-                            new CodePrimitiveExpression(null))))));
+            // executionManagerFactory = new ExecutionManagerFactory(new IClientRequestInterceptor[] { new LockingInterceptor(null) });
+            constructor.Statements.Add(new CodeSnippetStatement(
+                "            executionManagerFactory = new ExecutionManagerFactory(new IClientRequestInterceptor[] { new LockingInterceptor(null) });"));
 
             // Sila2Discovery.StartRealTimeMonitoring();
             constructor.Statements.Add(new CodeMethodInvokeExpression(
@@ -229,13 +225,8 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 var fieldName = ToCamelCase(feature.InterfaceName);
                 
                 // clientProvider.TryCreateClient<IFeature>(_server, out feature);
-                method.Statements.Add(new CodeMethodInvokeExpression(
-                    new CodeVariableReferenceExpression("clientProvider"),
-                    "TryCreateClient",
-                    new CodeTypeOfExpression(feature.InterfaceName),
-                    new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_server"),
-                    new CodeDirectionExpression(FieldDirection.Out,
-                        new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), fieldName))));
+                method.Statements.Add(new CodeSnippetStatement(
+                    $"            clientProvider.TryCreateClient<{feature.InterfaceName}>(_server, out {fieldName});"));
             }
 
             // TODO: 添加连接状态事件处理

@@ -6,6 +6,7 @@ using System.Reflection;
 using System.Xml.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
+using Microsoft.CodeAnalysis.Emit;
 using Microsoft.Extensions.Logging;
 using SilaGeneratorWpf.Models;
 
@@ -442,33 +443,68 @@ namespace SilaGeneratorWpf.Services
                     MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location),
                 };
 
+                // 添加 .NET 标准库引用
+                try
+                {
+                    references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.ObjectModel").Location));
+                    references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.ComponentModel.Primitives").Location));
+                    references.Add(MetadataReference.CreateFromFile(Assembly.Load("System.ComponentModel.Composition").Location));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "添加 System.ComponentModel 引用时出现警告");
+                }
+
                 // 尝试添加 Tecan.Sila2 相关的引用
                 try
                 {
-                    var tecanAssembly = AppDomain.CurrentDomain.GetAssemblies()
-                        .FirstOrDefault(a => a.FullName != null && a.FullName.Contains("Tecan.Sila2"));
-                    if (tecanAssembly != null)
+                    // 查找当前执行程序集所在目录（Generator.dll所在目录）
+                    var currentDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                    if (!string.IsNullOrEmpty(currentDir))
                     {
-                        references.Add(MetadataReference.CreateFromFile(tecanAssembly.Location));
+                        // 必需的DLL列表
+                        var requiredDlls = new[]
+                        {
+                            "protobuf-net.dll",
+                            "protobuf-net.Core.dll",
+                            "Tecan.Sila2.dll",
+                            "Tecan.Sila2.Contracts.dll",
+                            "Tecan.Sila2.Annotations.dll"
+                        };
+
+                        foreach (var dllName in requiredDlls)
+                        {
+                            var requiredDllPath = Path.Combine(currentDir, dllName);
+                            if (File.Exists(requiredDllPath))
+                            {
+                                references.Add(MetadataReference.CreateFromFile(requiredDllPath));
+                                _logger.LogInformation($"添加引用: {dllName}");
+                            }
+                            else
+                            {
+                                _logger.LogWarning($"未找到必需的DLL: {dllName} at {requiredDllPath}");
+                            }
+                        }
                     }
 
-                    // 添加当前目录下的 DLL 引用
+                    // 添加客户端代码目录下的 DLL 引用
                     var dllFiles = Directory.GetFiles(basePath, "*.dll", SearchOption.TopDirectoryOnly);
                     foreach (var dll in dllFiles)
                     {
                         try
                         {
                             references.Add(MetadataReference.CreateFromFile(dll));
+                            _logger.LogInformation($"添加客户端目录DLL引用: {Path.GetFileName(dll)}");
                         }
-                        catch
+                        catch (Exception dllEx)
                         {
-                            // 忽略无法加载的 DLL
+                            _logger.LogWarning(dllEx, $"无法加载 DLL: {Path.GetFileName(dll)}");
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogWarning(ex, "添加 Tecan.Sila2 引用时出现警告");
+                    _logger.LogWarning(ex, "添加外部引用时出现警告");
                 }
 
                 // 创建编译
@@ -489,12 +525,14 @@ namespace SilaGeneratorWpf.Services
                 var xmlDocPath = Path.Combine(tempPath, $"{assemblyName}.xml");
 
                 // 生成 DLL 和 XML 文档
-                using var dllStream = new FileStream(dllPath, FileMode.Create);
-                using var xmlStream = new FileStream(xmlDocPath, FileMode.Create);
-
-                var emitResult = compilation.Emit(
-                    dllStream,
-                    xmlDocumentationStream: xmlStream);
+                EmitResult emitResult;
+                using (var dllStream = new FileStream(dllPath, FileMode.Create))
+                using (var xmlStream = new FileStream(xmlDocPath, FileMode.Create))
+                {
+                    emitResult = compilation.Emit(
+                        dllStream,
+                        xmlDocumentationStream: xmlStream);
+                }
 
                 if (!emitResult.Success)
                 {
@@ -508,7 +546,7 @@ namespace SilaGeneratorWpf.Services
 
                 _logger.LogInformation($"编译成功: {dllPath}");
 
-                // 加载程序集
+                // 加载程序集（确保文件流已关闭）
                 var assembly = Assembly.LoadFrom(dllPath);
                 return (assembly, xmlDocPath);
             }
