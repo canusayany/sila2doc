@@ -31,17 +31,6 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         [RelayCommand]
-        private void ToggleAllIncluded()
-        {
-            // 如果全部包含，则全部不包含；否则全部包含
-            bool allIncluded = MethodPreviewData.All(m => m.IsIncluded);
-            foreach (var method in MethodPreviewData)
-            {
-                method.IsIncluded = !allIncluded;
-            }
-        }
-
-        [RelayCommand]
         private void SetAllMaintenance()
         {
             foreach (var method in MethodPreviewData)

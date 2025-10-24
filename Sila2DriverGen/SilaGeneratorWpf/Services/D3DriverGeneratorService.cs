@@ -239,7 +239,8 @@ namespace SilaGeneratorWpf.Services
         {
             _logger.LogInformation("生成项目文件");
 
-            var projectName = $"{config.Brand}{config.Model}.D3Driver";
+            // 项目名称与命名空间保持一致
+            var projectName = config.Namespace;
             var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
 
             var projectContent = $@"<Project Sdk=""Microsoft.NET.Sdk"">
@@ -247,6 +248,8 @@ namespace SilaGeneratorWpf.Services
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\{projectName}.xml</DocumentationFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -405,10 +408,11 @@ namespace SilaGeneratorWpf.Services
         {
             _logger.LogInformation("生成解决方案文件");
 
-            var solutionName = $"{config.Brand}{config.Model}.D3Driver";
+            // 项目名称与命名空间保持一致
+            var solutionName = config.Namespace;
             var solutionPath = Path.Combine(config.OutputPath, $"{solutionName}.sln");
 
-            var driverProjectName = $"{config.Brand}{config.Model}.D3Driver";
+            var driverProjectName = config.Namespace;
             var driverProjectPath = $"{driverProjectName}.csproj";
             var driverProjectGuid = Guid.NewGuid().ToString("B").ToUpperInvariant();
 
@@ -508,7 +512,8 @@ EndGlobal
         /// </summary>
         private (bool Success, string Output, int Warnings, int Errors) CompileProject(D3DriverGenerationConfig config)
         {
-            var projectName = $"{config.Brand}{config.Model}.D3Driver";
+            // 项目名称与命名空间保持一致
+            var projectName = config.Namespace;
             var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
             return CompileProjectInternal(projectPath, config.OutputPath, null);
         }

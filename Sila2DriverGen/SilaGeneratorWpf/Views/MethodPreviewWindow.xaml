@@ -38,13 +38,9 @@
             IsReadOnly="False"
             CanUserAddRows="False"
             CanUserDeleteRows="False"
-            SelectionMode="Single"
+            SelectionUnit="Cell"
             ItemsSource="{Binding MethodPreviewData}">
             <DataGrid.Columns>
-                <DataGridCheckBoxColumn
-                    Width="70"
-                    Binding="{Binding IsIncluded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    Header="包含" />
                 <DataGridTextColumn
                     Width="150"
                     Binding="{Binding FeatureName}"
@@ -65,14 +61,26 @@
                     Binding="{Binding ReturnType}"
                     Header="返回值"
                     IsReadOnly="True" />
-                <DataGridCheckBoxColumn
-                    Width="80"
-                    Binding="{Binding IsOperations, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    Header="调度方法" />
-                <DataGridCheckBoxColumn
-                    Width="80"
-                    Binding="{Binding IsMaintenance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
-                    Header="维护方法" />
+                <DataGridTemplateColumn Width="90" Header="调度方法">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox 
+                                IsChecked="{Binding IsOperations, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="90" Header="维护方法">
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <CheckBox 
+                                IsChecked="{Binding IsMaintenance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                                HorizontalAlignment="Center"
+                                VerticalAlignment="Center" />
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn
                     Width="*"
                     Binding="{Binding Description}"
@@ -90,15 +98,6 @@
             
             <!--  左侧批量操作按钮  -->
             <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
-                <Button
-                    Padding="12,8"
-                    Background="#3498db"
-                    BorderThickness="0"
-                    Command="{Binding ToggleAllIncludedCommand}"
-                    Content="全选/全不选"
-                    Foreground="White"
-                    Margin="0,0,10,0"
-                    ToolTip="切换所有方法的包含状态" />
                 <Button
                     Padding="12,8"
                     Background="#9b59b6"
