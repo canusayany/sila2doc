@@ -93,7 +93,8 @@ namespace SilaGeneratorWpf.Services.CodeDom
             driverClass.Comments.Add(new CodeCommentStatement("<remarks>", true));
             driverClass.Comments.Add(new CodeCommentStatement("能被D3调用的方法必须是同步的。", true));
             driverClass.Comments.Add(new CodeCommentStatement("带有MethodOperations特性的方法为调度方法，带有MethodMaintenance特性的为维护方法。", true));
-            driverClass.Comments.Add(new CodeCommentStatement("方法可以同时标记为调度和维护方法，或两者都不标记。", true));
+            driverClass.Comments.Add(new CodeCommentStatement("方法可以同时标记为调度和维护方法。", true));
+            driverClass.Comments.Add(new CodeCommentStatement("只有带特性标记的方法才会被生成到D3Driver中。", true));
             driverClass.Comments.Add(new CodeCommentStatement("</remarks>", true));
         }
 
@@ -102,10 +103,13 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// </summary>
         private void AddMethods(CodeTypeDeclaration driverClass, List<MethodGenerationInfo> methods)
         {
-            // 只包含标记为 IsIncluded 的方法
-            var includedMethods = methods.Where(m => m.IsIncluded).ToList();
+            // 只包含标记为 IsIncluded 且有特性标记的方法
+            // 方法必须至少有一个特性标记（IsOperations 或 IsMaintenance）才会被生成
+            var includedMethods = methods
+                .Where(m => m.IsIncluded && (m.IsOperations || m.IsMaintenance))
+                .ToList();
             
-            _logger.LogInformation($"共 {methods.Count} 个方法，其中 {includedMethods.Count} 个被包含在D3Driver中");
+            _logger.LogInformation($"共 {methods.Count} 个方法，其中 {includedMethods.Count} 个被包含在D3Driver中（有特性标记）");
 
             // 先统计需要维护序号的方法
             var maintenanceMethods = includedMethods.Where(m => m.IsMaintenance).ToList();

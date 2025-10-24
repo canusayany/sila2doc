@@ -36,6 +36,9 @@
             GridLinesVisibility="Horizontal"
             HeadersVisibility="Column"
             IsReadOnly="False"
+            CanUserAddRows="False"
+            CanUserDeleteRows="False"
+            SelectionMode="Single"
             ItemsSource="{Binding MethodPreviewData}">
             <DataGrid.Columns>
                 <DataGridCheckBoxColumn

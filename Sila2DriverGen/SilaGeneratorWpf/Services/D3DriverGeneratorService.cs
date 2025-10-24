@@ -292,7 +292,25 @@ namespace SilaGeneratorWpf.Services
 
             var libDir = Path.Combine(config.OutputPath, "lib");
             
-            // 从示例项目复制依赖库
+            // 首先尝试从reflib目录复制（推荐位置）
+            var reflibDir = FindReflibDirectory();
+            
+            if (!string.IsNullOrEmpty(reflibDir) && Directory.Exists(reflibDir))
+            {
+                _logger.LogInformation($"从reflib目录复制: {reflibDir}");
+                var dllFiles = Directory.GetFiles(reflibDir, "*.dll", SearchOption.TopDirectoryOnly);
+                foreach (var dllFile in dllFiles)
+                {
+                    var fileName = Path.GetFileName(dllFile);
+                    var destFile = Path.Combine(libDir, fileName);
+                    File.Copy(dllFile, destFile, overwrite: true);
+                    _logger.LogDebug($"复制库文件: {fileName}");
+                }
+                _logger.LogInformation($"从reflib复制了 {dllFiles.Length} 个依赖库文件");
+                return;
+            }
+
+            // 备用方案：从示例项目复制依赖库
             var sampleLibDir = Path.Combine(
                 Path.GetDirectoryName(config.ClientCodePath) ?? "",
                 "..",
@@ -329,12 +347,44 @@ namespace SilaGeneratorWpf.Services
                     File.Copy(dllFile, destFile, overwrite: true);
                     _logger.LogDebug($"复制库文件: {fileName}");
                 }
-                _logger.LogInformation($"复制了 {dllFiles.Length} 个依赖库文件");
+                _logger.LogInformation($"从示例项目复制了 {dllFiles.Length} 个依赖库文件");
             }
             else
             {
-                _logger.LogWarning($"未找到依赖库目录: {sampleLibDir}，请手动复制依赖库");
+                _logger.LogWarning($"未找到依赖库目录，请手动复制依赖库");
             }
+        }
+
+        /// <summary>
+        /// 查找reflib目录
+        /// </summary>
+        private string? FindReflibDirectory()
+        {
+            // 获取当前执行程序集的位置
+            var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            var currentDir = Path.GetDirectoryName(assemblyLocation);
+            
+            if (string.IsNullOrEmpty(currentDir))
+                return null;
+
+            // 向上查找reflib目录
+            var searchDir = currentDir;
+            for (int i = 0; i < 10; i++)
+            {
+                var reflibPath = Path.Combine(searchDir, "reflib");
+                if (Directory.Exists(reflibPath))
+                {
+                    _logger.LogInformation($"找到reflib目录: {reflibPath}");
+                    return reflibPath;
+                }
+
+                var parent = Directory.GetParent(searchDir);
+                if (parent == null) break;
+                searchDir = parent.FullName;
+            }
+
+            _logger.LogWarning("未找到reflib目录");
+            return null;
         }
 
         /// <summary>
