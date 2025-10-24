@@ -1,8 +1,8 @@
+using Microsoft.CSharp;
+using Microsoft.Extensions.Logging;
 using System.CodeDom;
 using System.CodeDom.Compiler;
 using System.IO;
-using Microsoft.CSharp;
-using Microsoft.Extensions.Logging;
 
 namespace SilaGeneratorWpf.Services.CodeDom
 {
@@ -21,7 +21,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// <summary>
         /// 生成 Sila2Base.cs
         /// </summary>
-  
+
         public void Generate(string outputPath, string namespaceName, string clientCodeNamespace = "Sila2Client")
         {
             _logger.LogInformation("开始生成 Sila2Base.cs");
@@ -245,7 +245,7 @@ global using {clientCodeNamespace};");
             var propertiesSnippet = new CodeSnippetTypeMember(@"
         public string IP { get; set; }
         public int Port { get; set; }");
-            
+
             connectionInfoClass.Members.Add(propertiesSnippet);
 
             return connectionInfoClass;
@@ -267,7 +267,7 @@ global using {clientCodeNamespace};");
 
             // 先写 global usings
             provider.GenerateCodeFromCompileUnit(globalUsings, writer, options);
-            
+
             // 再写主代码
             provider.GenerateCodeFromCompileUnit(codeUnit, writer, options);
         }
