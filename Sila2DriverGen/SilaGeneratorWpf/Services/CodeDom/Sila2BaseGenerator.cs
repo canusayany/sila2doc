@@ -21,6 +21,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// <summary>
         /// 生成 Sila2Base.cs
         /// </summary>
+  
         public void Generate(string outputPath, string namespaceName, string clientCodeNamespace = "Sila2Client")
         {
             _logger.LogInformation("开始生成 Sila2Base.cs");
@@ -34,6 +35,7 @@ global using {namespaceName};
 global using BR.ECS.Executor.Device.Domain.Contracts;
 global using BR.ECS.Executor.Device.Domain.Share;
 global using BR.ECS.Executor.Device.Infrastructure;
+global using Newtonsoft.Json;
 global using {clientCodeNamespace};");
             codeUnit.Namespaces.Add(new CodeNamespace());  // 添加一个空命名空间以确保编译单元有效
 

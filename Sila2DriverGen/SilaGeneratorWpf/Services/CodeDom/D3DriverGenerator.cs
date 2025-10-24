@@ -288,8 +288,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 foreach (var param in method.Parameters.Where(p => p.RequiresJsonParameter))
                 {
                     // var paramName = JsonConvert.DeserializeObject<ParamType>(paramNameJsonString);
+                    var friendlyTypeName = GetFriendlyTypeName(param.Type);
                     var deserializeStatement = new CodeSnippetStatement(
-                        $"            var {param.Name} = Newtonsoft.Json.JsonConvert.DeserializeObject<{param.Type.FullName}>({param.Name}JsonString);");
+                        $"            var {param.Name} = Newtonsoft.Json.JsonConvert.DeserializeObject<{friendlyTypeName}>({param.Name}JsonString);");
                     codeMethod.Statements.Add(deserializeStatement);
                 }
             }
@@ -343,6 +344,8 @@ namespace SilaGeneratorWpf.Services.CodeDom
             if (type.IsGenericType)
             {
                 var typeName = type.GetGenericTypeDefinition().FullName;
+                if (string.IsNullOrEmpty(typeName))
+                    return type.Name;
                 
                 // 移除泛型参数数量标记（如 `1, `2 等）
                 var backtickIndex = typeName.IndexOf('`');
@@ -362,6 +365,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
             if (type.IsArray)
             {
                 var elementType = type.GetElementType();
+                if (elementType == null)
+                    return type.Name;
+                    
                 var elementTypeName = GetFriendlyTypeName(elementType);
                 return $"{elementTypeName}[]";
             }
