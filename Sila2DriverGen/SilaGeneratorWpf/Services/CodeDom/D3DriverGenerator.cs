@@ -184,19 +184,30 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     returnType = typeof(void);
                 }
             }
-            codeMethod.ReturnType = new CodeTypeReference(returnType);
+            
+            // 如果返回类型不支持，改为 JSON 字符串
+            if (method.RequiresJsonReturn && returnType != typeof(void))
+            {
+                codeMethod.ReturnType = new CodeTypeReference(typeof(string));
+            }
+            else
+            {
+                codeMethod.ReturnType = new CodeTypeReference(returnType);
+            }
 
             // 添加参数
             foreach (var param in method.Parameters)
             {
-                codeMethod.Parameters.Add(new CodeParameterDeclarationExpression(
-                    param.Type, param.Name));
-
-                // 如果类型不支持，添加额外的 JSON 字符串参数
+                // 如果类型不支持，直接使用 JSON 字符串类型
                 if (param.RequiresJsonParameter)
                 {
                     codeMethod.Parameters.Add(new CodeParameterDeclarationExpression(
                         typeof(string), $"{param.Name}JsonString"));
+                }
+                else
+                {
+                    codeMethod.Parameters.Add(new CodeParameterDeclarationExpression(
+                        param.Type, param.Name));
                 }
             }
 
@@ -228,16 +239,17 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     if (xmlDoc.Parameters != null &&
                         xmlDoc.Parameters.TryGetValue(param.Name, out var paramDoc))
                     {
-                        codeMethod.Comments.Add(new CodeCommentStatement(
-                            $"<param name=\"{param.Name}\">{paramDoc}</param>", true));
-                    }
-
-                    // 如果需要 JSON 参数，添加额外的参数注释
-                    if (param.RequiresJsonParameter)
-                    {
-                        codeMethod.Comments.Add(new CodeCommentStatement(
-                            $"<param name=\"{param.Name}JsonString\">JSON 字符串格式的 {param.Name}（可选，优先使用）</param>",
-                            true));
+                        // 如果参数需要JSON，修改参数名称和说明
+                        if (param.RequiresJsonParameter)
+                        {
+                            codeMethod.Comments.Add(new CodeCommentStatement(
+                                $"<param name=\"{param.Name}JsonString\">{paramDoc} (JSON格式)</param>", true));
+                        }
+                        else
+                        {
+                            codeMethod.Comments.Add(new CodeCommentStatement(
+                                $"<param name=\"{param.Name}\">{paramDoc}</param>", true));
+                        }
                     }
                 }
 
@@ -246,10 +258,10 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 {
                     var returnsDoc = xmlDoc.Returns;
 
-                    // 如果返回类型不支持，添加提示
+                    // 如果返回类型不支持，修改说明
                     if (method.RequiresJsonReturn)
                     {
-                        returnsDoc += " [注意：返回类型为复杂对象，建议使用 JSON 序列化]";
+                        returnsDoc += " (返回JSON格式字符串)";
                     }
 
                     codeMethod.Comments.Add(new CodeCommentStatement(
@@ -269,24 +281,98 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// </summary>
         private void AddMethodBody(CodeMemberMethod codeMethod, MethodGenerationInfo method)
         {
-            // 构建参数列表
+            // 1. 对需要JSON的参数进行反序列化
+            var hasJsonParams = method.Parameters.Any(p => p.RequiresJsonParameter);
+            if (hasJsonParams)
+            {
+                foreach (var param in method.Parameters.Where(p => p.RequiresJsonParameter))
+                {
+                    // var paramName = JsonConvert.DeserializeObject<ParamType>(paramNameJsonString);
+                    var deserializeStatement = new CodeSnippetStatement(
+                        $"            var {param.Name} = Newtonsoft.Json.JsonConvert.DeserializeObject<{param.Type.FullName}>({param.Name}JsonString);");
+                    codeMethod.Statements.Add(deserializeStatement);
+                }
+            }
+
+            // 2. 构建参数列表（使用反序列化后的变量）
             var arguments = method.Parameters.Select(p =>
                 new CodeArgumentReferenceExpression(p.Name)).ToArray();
 
-            // _sila2Device.Method(...);
+            // 3. 调用 _sila2Device.Method(...)
             var invokeExpression = new CodeMethodInvokeExpression(
                 new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_sila2Device"),
                 method.Name,
                 arguments);
 
+            // 4. 处理返回值
             if (codeMethod.ReturnType.BaseType == "System.Void")
             {
+                // void 方法：直接调用
                 codeMethod.Statements.Add(new CodeExpressionStatement(invokeExpression));
+            }
+            else if (method.RequiresJsonReturn)
+            {
+                // 返回值需要JSON：调用后序列化
+                // var result = _sila2Device.Method(...);
+                codeMethod.Statements.Add(new CodeVariableDeclarationStatement("var", "result", invokeExpression));
+                // return JsonConvert.SerializeObject(result);
+                var serializeStatement = new CodeSnippetStatement(
+                    "            return Newtonsoft.Json.JsonConvert.SerializeObject(result);");
+                codeMethod.Statements.Add(serializeStatement);
             }
             else
             {
+                // 普通返回值：直接返回
                 codeMethod.Statements.Add(new CodeMethodReturnStatement(invokeExpression));
             }
+        }
+
+        /// <summary>
+        /// 获取友好的类型名称（用于代码生成）
+        /// </summary>
+        /// <remarks>
+        /// 处理泛型类型，避免生成带程序集信息的完整限定名称
+        /// 例如：ICollection`1[[Stream, ...]] -> ICollection&lt;Stream&gt;
+        /// </remarks>
+        private string GetFriendlyTypeName(Type type)
+        {
+            if (type == null)
+                return "object";
+
+            // 处理泛型类型
+            if (type.IsGenericType)
+            {
+                var typeName = type.GetGenericTypeDefinition().FullName;
+                
+                // 移除泛型参数数量标记（如 `1, `2 等）
+                var backtickIndex = typeName.IndexOf('`');
+                if (backtickIndex > 0)
+                {
+                    typeName = typeName.Substring(0, backtickIndex);
+                }
+
+                // 获取泛型参数的友好名称
+                var genericArgs = type.GetGenericArguments();
+                var genericArgNames = genericArgs.Select(GetFriendlyTypeName);
+                
+                return $"{typeName}<{string.Join(", ", genericArgNames)}>";
+            }
+
+            // 处理数组类型
+            if (type.IsArray)
+            {
+                var elementType = type.GetElementType();
+                var elementTypeName = GetFriendlyTypeName(elementType);
+                return $"{elementTypeName}[]";
+            }
+
+            // 处理普通类型，返回命名空间+类型名
+            if (!string.IsNullOrEmpty(type.Namespace))
+            {
+                return $"{type.Namespace}.{type.Name}";
+            }
+
+            return type.Name;
         }
 
         /// <summary>

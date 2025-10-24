@@ -406,13 +406,6 @@ namespace SilaGeneratorWpf.Services.CodeDom
             {
                 codeMethod.Parameters.Add(new CodeParameterDeclarationExpression(
                     param.Type, param.Name));
-
-                // 如果类型不支持，添加额外的 JSON 字符串参数
-                if (param.RequiresJsonParameter)
-                {
-                    codeMethod.Parameters.Add(new CodeParameterDeclarationExpression(
-                        typeof(string), $"{param.Name}JsonString"));
-                }
             }
 
             // 添加方法体
@@ -460,29 +453,13 @@ namespace SilaGeneratorWpf.Services.CodeDom
                         codeMethod.Comments.Add(new CodeCommentStatement(
                             $"<param name=\"{param.Name}\">{paramDoc}</param>", true));
                     }
-
-                    // 如果需要 JSON 参数，添加额外的参数注释
-                    if (param.RequiresJsonParameter)
-                    {
-                        codeMethod.Comments.Add(new CodeCommentStatement(
-                            $"<param name=\"{param.Name}JsonString\">JSON 字符串格式的 {param.Name}（可选，优先使用）</param>",
-                            true));
-                    }
                 }
 
                 // Returns
                 if (!string.IsNullOrEmpty(xmlDoc.Returns))
                 {
-                    var returnsDoc = xmlDoc.Returns;
-
-                    // 如果返回类型不支持，添加提示
-                    if (method.RequiresJsonReturn)
-                    {
-                        returnsDoc += " [注意：返回类型为复杂对象，建议使用 JSON 序列化]";
-                    }
-
                     codeMethod.Comments.Add(new CodeCommentStatement(
-                        $"<returns>{returnsDoc}</returns>", true));
+                        $"<returns>{xmlDoc.Returns}</returns>", true));
                 }
 
                 // Remarks

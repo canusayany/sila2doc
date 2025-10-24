@@ -255,6 +255,7 @@ namespace SilaGeneratorWpf.Services
   <ItemGroup>
     <PackageReference Include=""Tecan.Sila2.Client.NetCore"" Version=""4.4.1"" />
     <PackageReference Include=""Tecan.Sila2.Features.Locking.Client"" Version=""4.4.1"" />
+    <PackageReference Include=""Tecan.Sila2.DynamicClient"" Version=""4.4.1"" />
     <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
   </ItemGroup>
 
