@@ -333,7 +333,8 @@ namespace SilaGeneratorWpf.Services
                     "Grpc.Core.Api.dll",
                     "Grpc.Core.dll",
                     "Grpc.Net.Client.dll",
-                    "Grpc.Net.Common.dll"
+                    "Grpc.Net.Common.dll",
+                    "Newtonsoft.Json.dll"  // JSON序列化支持（用于[JsonConstructor]特性）
                 };
 
                 progressCallback?.Invoke("  → 复制必需的 DLL 到客户端目录...");

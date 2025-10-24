@@ -250,6 +250,7 @@ namespace SilaGeneratorWpf.Services
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\{projectName}.xml</DocumentationFile>
+ <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -301,62 +302,79 @@ namespace SilaGeneratorWpf.Services
             
             if (!string.IsNullOrEmpty(reflibDir) && Directory.Exists(reflibDir))
             {
-                _logger.LogInformation($"从reflib目录复制: {reflibDir}");
                 var dllFiles = Directory.GetFiles(reflibDir, "*.dll", SearchOption.TopDirectoryOnly);
+                if (dllFiles.Length > 0)
+                {
+                    _logger.LogInformation($"从reflib目录复制: {reflibDir}");
+                    foreach (var dllFile in dllFiles)
+                    {
+                        var fileName = Path.GetFileName(dllFile);
+                        var destFile = Path.Combine(libDir, fileName);
+                        File.Copy(dllFile, destFile, overwrite: true);
+                        _logger.LogDebug($"复制库文件: {fileName}");
+                    }
+                    _logger.LogInformation($"从reflib复制了 {dllFiles.Length} 个依赖库文件");
+                    return;
+                }
+            }
+
+            // 备用方案1：从示例项目的lib目录复制（相对于执行程序集）
+            var sampleLibDir = FindSampleLibDirectory();
+            
+            if (!string.IsNullOrEmpty(sampleLibDir) && Directory.Exists(sampleLibDir))
+            {
+                _logger.LogInformation($"从示例项目复制依赖库: {sampleLibDir}");
+                var dllFiles = Directory.GetFiles(sampleLibDir, "*.dll", SearchOption.TopDirectoryOnly);
+                
+                // 去重复制（因为目录中可能有重复的DLL）
+                var copiedFiles = new HashSet<string>();
                 foreach (var dllFile in dllFiles)
                 {
                     var fileName = Path.GetFileName(dllFile);
-                    var destFile = Path.Combine(libDir, fileName);
-                    File.Copy(dllFile, destFile, overwrite: true);
-                    _logger.LogDebug($"复制库文件: {fileName}");
+                    if (!copiedFiles.Contains(fileName))
+                    {
+                        var destFile = Path.Combine(libDir, fileName);
+                        File.Copy(dllFile, destFile, overwrite: true);
+                        _logger.LogDebug($"复制库文件: {fileName}");
+                        copiedFiles.Add(fileName);
+                    }
                 }
-                _logger.LogInformation($"从reflib复制了 {dllFiles.Length} 个依赖库文件");
+                _logger.LogInformation($"从示例项目复制了 {copiedFiles.Count} 个依赖库文件");
                 return;
             }
 
-            // 备用方案：从示例项目复制依赖库
-            var sampleLibDir = Path.Combine(
-                Path.GetDirectoryName(config.ClientCodePath) ?? "",
-                "..",
-                "BR.ECS.DeviceDriver.Sample.Test",
-                "lib");
-
-            // 如果示例 lib 目录不存在，尝试从当前目录查找
-            if (!Directory.Exists(sampleLibDir))
+            // 备用方案2：从当前目录向上查找
+            var currentDir = Directory.GetCurrentDirectory();
+            var searchDir = currentDir;
+            for (int i = 0; i < 5; i++)
             {
-                // 从当前工作目录向上查找
-                var currentDir = Directory.GetCurrentDirectory();
-                var searchDir = currentDir;
-                for (int i = 0; i < 5; i++)
+                var testPath = Path.Combine(searchDir, "BR.ECS.DeviceDriver.Sample.Test", "lib");
+                if (Directory.Exists(testPath))
                 {
-                    var testPath = Path.Combine(searchDir, "BR.ECS.DeviceDriver.Sample.Test", "lib");
-                    if (Directory.Exists(testPath))
+                    _logger.LogInformation($"从搜索目录复制依赖库: {testPath}");
+                    var dllFiles = Directory.GetFiles(testPath, "*.dll", SearchOption.TopDirectoryOnly);
+                    
+                    var copiedFiles = new HashSet<string>();
+                    foreach (var dllFile in dllFiles)
                     {
-                        sampleLibDir = testPath;
-                        break;
+                        var fileName = Path.GetFileName(dllFile);
+                        if (!copiedFiles.Contains(fileName))
+                        {
+                            var destFile = Path.Combine(libDir, fileName);
+                            File.Copy(dllFile, destFile, overwrite: true);
+                            _logger.LogDebug($"复制库文件: {fileName}");
+                            copiedFiles.Add(fileName);
+                        }
                     }
-                    var parent = Directory.GetParent(searchDir);
-                    if (parent == null) break;
-                    searchDir = parent.FullName;
+                    _logger.LogInformation($"从搜索目录复制了 {copiedFiles.Count} 个依赖库文件");
+                    return;
                 }
+                var parent = Directory.GetParent(searchDir);
+                if (parent == null) break;
+                searchDir = parent.FullName;
             }
 
-            if (Directory.Exists(sampleLibDir))
-            {
-                var dllFiles = Directory.GetFiles(sampleLibDir, "*.dll", SearchOption.TopDirectoryOnly);
-                foreach (var dllFile in dllFiles)
-                {
-                    var fileName = Path.GetFileName(dllFile);
-                    var destFile = Path.Combine(libDir, fileName);
-                    File.Copy(dllFile, destFile, overwrite: true);
-                    _logger.LogDebug($"复制库文件: {fileName}");
-                }
-                _logger.LogInformation($"从示例项目复制了 {dllFiles.Length} 个依赖库文件");
-            }
-            else
-            {
-                _logger.LogWarning($"未找到依赖库目录，请手动复制依赖库");
-            }
+            _logger.LogWarning($"未找到依赖库目录，请手动复制依赖库");
         }
 
         /// <summary>
@@ -388,6 +406,38 @@ namespace SilaGeneratorWpf.Services
             }
 
             _logger.LogWarning("未找到reflib目录");
+            return null;
+        }
+
+        /// <summary>
+        /// 查找示例项目的lib目录
+        /// </summary>
+        private string? FindSampleLibDirectory()
+        {
+            // 获取当前执行程序集的位置
+            var assemblyLocation = System.Reflection.Assembly.GetExecutingAssembly().Location;
+            var currentDir = Path.GetDirectoryName(assemblyLocation);
+            
+            if (string.IsNullOrEmpty(currentDir))
+                return null;
+
+            // 向上查找BR.ECS.DeviceDriver.Sample.Test/lib目录
+            var searchDir = currentDir;
+            for (int i = 0; i < 10; i++)
+            {
+                var libPath = Path.Combine(searchDir, "BR.ECS.DeviceDriver.Sample.Test", "lib");
+                if (Directory.Exists(libPath))
+                {
+                    _logger.LogInformation($"找到示例项目lib目录: {libPath}");
+                    return libPath;
+                }
+
+                var parent = Directory.GetParent(searchDir);
+                if (parent == null) break;
+                searchDir = parent.FullName;
+            }
+
+            _logger.LogWarning("未找到示例项目lib目录");
             return null;
         }
 

@@ -3,117 +3,85 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
-using SilaGeneratorWpf.Services;
 
 namespace Sila2DriverGen.TestConsole
 {
     /// <summary>
-    /// 测试运行器
+    /// 交互式测试运行器
     /// </summary>
-    public class TestRunner
+    public class TestRunner : TestBase
     {
-        private readonly D3DriverOrchestrationService _orchestrationService;
-        private string? _lastGeneratedProjectPath;
-
-        public TestRunner()
-        {
-            _orchestrationService = new D3DriverOrchestrationService();
-        }
-
         public async Task RunAsync()
         {
             bool exit = false;
 
             while (!exit)
             {
-                var choice = ConsoleHelper.ShowMenu(
-                    "═══ D3驱动生成功能测试 ═══",
-                    new[]
-                    {
-                        "测试1：从本地XML生成D3项目",
-                        "测试2：编译已生成的D3项目",
-                        "测试3：完整流程（生成+编译）",
-                        "测试4：调整方法分类并重新生成",
-                        "测试5：错误处理测试（无效文件）",
-                        "测试6：错误处理测试（编译失败）",
-                        "测试7：完整流程测试（多特性）",
-                        "测试8：查看测试说明",
-                        "退出"
-                    });
+                var menuItems = TestInfo.GetAllTests()
+                    .Select(t => $"{TestInfo.GetDisplayName(t.Item)}")
+                    .Concat(new[] { "查看测试说明", "退出" })
+                    .ToArray();
 
-                switch (choice)
+                var choice = ConsoleHelper.ShowMenu("═══ D3驱动生成功能测试 ═══", menuItems);
+
+                if (choice == menuItems.Length)
                 {
-                    case 1:
-                        await TestGenerateFromLocalXmlAsync();
-                        break;
-                    case 2:
-                        await TestCompileProjectAsync();
-                        break;
-                    case 3:
-                        await TestCompleteWorkflowAsync();
-                        break;
-                    case 4:
-                        await TestAdjustMethodClassificationsAsync();
-                        break;
-                    case 5:
-                        await TestErrorHandling_InvalidFileAsync();
-                        break;
-                    case 6:
-                        await TestErrorHandling_CompilationFailureAsync();
-                        break;
-                    case 7:
-                        await TestCompleteWorkflow_MultipleFeatures();
-                        break;
-                    case 8:
-                        ShowTestInstructions();
-                        break;
-                    case 9:
-                        exit = true;
-                        break;
-                    default:
-                        ConsoleHelper.PrintError("无效的选择，请重试");
-                        break;
+                    exit = true;
+                }
+                else if (choice == menuItems.Length - 1)
+                {
+                    ShowTestInstructions();
+                }
+                else if (choice >= 1 && choice <= 8)
+                {
+                    await RunTestAsync((TestItem)choice);
+                }
+                else
+                {
+                    ConsoleHelper.PrintError("无效的选择，请重试");
                 }
 
                 if (!exit)
                 {
-                    //Console.WriteLine("\n按任意键继续...");
-                    //Console.ReadKey();
                     Console.Clear();
                     ConsoleHelper.PrintHeader();
                 }
             }
         }
 
-        /// <summary>
-        /// 测试1：从本地XML生成D3项目
-        /// </summary>
-        private async Task TestGenerateFromLocalXmlAsync()
+        private async Task RunTestAsync(TestItem testItem)
         {
-            ConsoleHelper.PrintSection("测试1：从本地XML生成D3项目");
+            var testName = TestInfo.GetDisplayName(testItem);
+            ConsoleHelper.PrintSection(testName);
             Console.WriteLine();
 
-            // 查找示例XML文件
-            var workspaceRoot = Directory.GetCurrentDirectory();
-            var searchPaths = new[]
+            try
             {
-                Path.Combine(workspaceRoot, "TemperatureController-v1_0.sila.xml"),
-                Path.Combine(workspaceRoot, "..", "SilaGeneratorWpf", "TemperatureController-v1_0.sila.xml"),
-                Path.Combine(workspaceRoot, "..", "..", "TemperatureController-v1_0.sila.xml"),
-                Path.Combine(workspaceRoot, "..", "..", "..", "TemperatureController-v1_0.sila.xml")
-            };
-
-            string? xmlPath = null;
-            foreach (var path in searchPaths)
-            {
-                var fullPath = Path.GetFullPath(path);
-                if (File.Exists(fullPath))
+                await (testItem switch
                 {
-                    xmlPath = fullPath;
-                    break;
-                }
+                    TestItem.GenerateFromLocalXml => Test_GenerateFromLocalXmlAsync(),
+                    TestItem.CompileProject => Test_CompileProjectAsync(),
+                    TestItem.CompleteWorkflow => Test_CompleteWorkflowAsync(),
+                    TestItem.AdjustMethodClassifications => Test_AdjustMethodClassificationsAsync(),
+                    TestItem.MultipleFeatures => Test_MultipleFeaturesAsync(),
+                    TestItem.ErrorHandling_InvalidFile => Test_ErrorHandling_InvalidFileAsync(),
+                    TestItem.ErrorHandling_CompilationFailure => Test_ErrorHandling_CompilationFailureAsync(),
+                    TestItem.OnlineServer => Test_OnlineServerAsync(),
+                    _ => throw new NotImplementedException($"未实现的测试项: {testItem}")
+                });
             }
+            catch (Exception ex)
+            {
+                ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+            }
+        }
 
+        #region 测试实现
+
+        private async Task Test_GenerateFromLocalXmlAsync()
+        {
+            var xmlPath = FindXmlFile();
             if (xmlPath == null)
             {
                 ConsoleHelper.PrintError("未找到示例XML文件: TemperatureController-v1_0.sila.xml");
@@ -124,62 +92,39 @@ namespace Sila2DriverGen.TestConsole
             ConsoleHelper.PrintInfo($"找到XML文件: {Path.GetFileName(xmlPath)}");
             Console.WriteLine();
 
-            // 创建生成请求
-            var request = new D3GenerationRequest
-            {
-                Brand = "TestBrand",
-                Model = "TestModel",
-                DeviceType = "TestDevice",
-                Developer = "Bioyond",
-                IsOnlineSource = false,
-                LocalFeatureXmlPaths = new List<string> { xmlPath }
-            };
+            var request = CreateTestRequest("TestBrand", "TestModel", "TestDevice", new List<string> { xmlPath });
 
             ConsoleHelper.PrintInfo("开始生成D3项目...");
             ConsoleHelper.PrintInfo($"设备信息: {request.Brand} {request.Model} ({request.DeviceType})");
             Console.WriteLine();
 
-            try
+            var result = await _orchestrationService.GenerateD3ProjectAsync(
+                request,
+                message => Console.WriteLine(message));
+
+            Console.WriteLine();
+            if (result.Success)
             {
-                var result = await _orchestrationService.GenerateD3ProjectAsync(
-                    request,
-                    message => Console.WriteLine(message));
+                ConsoleHelper.PrintSuccess("✓ D3项目生成成功！");
+                ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
+                
+                _lastGeneratedProjectPath = result.ProjectPath;
 
-                Console.WriteLine();
-                if (result.Success)
+                if (result.AnalysisResult != null)
                 {
-                    ConsoleHelper.PrintSuccess("✓ D3项目生成成功！");
-                    ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
-                    
-                    _lastGeneratedProjectPath = result.ProjectPath;
-
-                    if (result.AnalysisResult != null)
-                    {
-                        Console.WriteLine();
-                        ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
-                        ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
-                    }
-                }
-                else
-                {
-                    ConsoleHelper.PrintError($"✗ 生成失败: {result.Message}");
+                    Console.WriteLine();
+                    ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
+                    ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
                 }
             }
-            catch (Exception ex)
+            else
             {
-                ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
+                ConsoleHelper.PrintError($"✗ 生成失败: {result.Message}");
             }
         }
 
-        /// <summary>
-        /// 测试2：编译已生成的D3项目
-        /// </summary>
-        private async Task TestCompileProjectAsync()
+        private async Task Test_CompileProjectAsync()
         {
-            ConsoleHelper.PrintSection("测试2：编译已生成的D3项目");
-            Console.WriteLine();
-
             if (string.IsNullOrEmpty(_lastGeneratedProjectPath))
             {
                 ConsoleHelper.PrintWarning("尚未生成项目，请先运行测试1");
@@ -196,9 +141,8 @@ namespace Sila2DriverGen.TestConsole
                 _lastGeneratedProjectPath = input;
             }
 
-            if (!Directory.Exists(_lastGeneratedProjectPath))
+            if (!ValidateProjectPath(_lastGeneratedProjectPath))
             {
-                ConsoleHelper.PrintError($"项目目录不存在: {_lastGeneratedProjectPath}");
                 _lastGeneratedProjectPath = null;
                 return;
             }
@@ -206,47 +150,32 @@ namespace Sila2DriverGen.TestConsole
             ConsoleHelper.PrintInfo($"项目路径: {_lastGeneratedProjectPath}");
             Console.WriteLine();
 
-            try
-            {
-                ConsoleHelper.PrintInfo("开始编译...");
-                var result = await _orchestrationService.CompileD3ProjectAsync(
-                    _lastGeneratedProjectPath,
-                    message => Console.WriteLine(message));
+            ConsoleHelper.PrintInfo("开始编译...");
+            var result = await _orchestrationService.CompileD3ProjectAsync(
+                _lastGeneratedProjectPath!,
+                message => Console.WriteLine(message));
 
-                Console.WriteLine();
-                if (result.Success)
-                {
-                    ConsoleHelper.PrintSuccess("✓ 编译成功！");
-                    ConsoleHelper.PrintInfo($"DLL路径: {result.DllPath}");
-                    ConsoleHelper.PrintInfo($"警告数: {result.WarningCount}");
-                }
-                else
-                {
-                    ConsoleHelper.PrintError($"✗ 编译失败（{result.ErrorCount} 个错误）");
-                    if (!string.IsNullOrEmpty(result.Message))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine(result.Message);
-                    }
-                }
-            }
-            catch (Exception ex)
+            Console.WriteLine();
+            if (result.Success)
             {
-                ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
+                ConsoleHelper.PrintSuccess("✓ 编译成功！");
+                ConsoleHelper.PrintInfo($"DLL路径: {result.DllPath}");
+                ConsoleHelper.PrintInfo($"警告数: {result.WarningCount}");
+            }
+            else
+            {
+                ConsoleHelper.PrintError($"✗ 编译失败（{result.ErrorCount} 个错误）");
+                if (!string.IsNullOrEmpty(result.Message))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine(result.Message);
+                }
             }
         }
 
-        /// <summary>
-        /// 测试3：完整流程（生成+编译）
-        /// </summary>
-        private async Task TestCompleteWorkflowAsync()
+        private async Task Test_CompleteWorkflowAsync()
         {
-            ConsoleHelper.PrintSection("测试3：完整流程（生成+编译）");
-            Console.WriteLine();
-
-            // 生成
-            await TestGenerateFromLocalXmlAsync();
+            await Test_GenerateFromLocalXmlAsync();
 
             if (string.IsNullOrEmpty(_lastGeneratedProjectPath))
             {
@@ -258,18 +187,11 @@ namespace Sila2DriverGen.TestConsole
             Console.WriteLine("═══════════════════════════════════════════════");
             Console.WriteLine();
 
-            // 编译
-            await TestCompileProjectAsync();
+            await Test_CompileProjectAsync();
         }
 
-        /// <summary>
-        /// 测试4：调整方法分类并重新生成
-        /// </summary>
-        private async Task TestAdjustMethodClassificationsAsync()
+        private async Task Test_AdjustMethodClassificationsAsync()
         {
-            ConsoleHelper.PrintSection("测试4：调整方法分类并重新生成");
-            Console.WriteLine();
-
             if (string.IsNullOrEmpty(_lastGeneratedProjectPath))
             {
                 ConsoleHelper.PrintWarning("尚未生成项目，请先运行测试1或测试3");
@@ -286,9 +208,8 @@ namespace Sila2DriverGen.TestConsole
                 _lastGeneratedProjectPath = input;
             }
 
-            if (!Directory.Exists(_lastGeneratedProjectPath))
+            if (!ValidateProjectPath(_lastGeneratedProjectPath))
             {
-                ConsoleHelper.PrintError($"项目目录不存在: {_lastGeneratedProjectPath}");
                 _lastGeneratedProjectPath = null;
                 return;
             }
@@ -296,172 +217,51 @@ namespace Sila2DriverGen.TestConsole
             ConsoleHelper.PrintInfo($"项目路径: {_lastGeneratedProjectPath}");
             Console.WriteLine();
 
-            try
+            ConsoleHelper.PrintInfo("创建示例方法分类...");
+            var methodClassifications = new Dictionary<string, bool>
             {
-                // 创建示例方法分类（将部分方法标记为维护方法）
-                ConsoleHelper.PrintInfo("创建示例方法分类...");
-                var methodClassifications = new Dictionary<string, bool>
-                {
-                    // 假设TemperatureController有这些方法
-                    { "TemperatureController.GetTemperature", false },  // Operations
-                    { "TemperatureController.SetTemperature", false },  // Operations
-                    { "TemperatureController.Reset", true },            // Maintenance
-                    { "TemperatureController.Calibrate", true }         // Maintenance
-                };
-
-                ConsoleHelper.PrintInfo($"将调整 {methodClassifications.Count} 个方法的分类:");
-                foreach (var (methodName, isMaintenance) in methodClassifications)
-                {
-                    var category = isMaintenance ? "维护" : "操作";
-                    ConsoleHelper.PrintInfo($"  - {methodName} → {category}");
-                }
-                Console.WriteLine();
-
-                ConsoleHelper.PrintInfo("开始调整方法分类...");
-                var result = await _orchestrationService.AdjustMethodClassificationsAsync(
-                    _lastGeneratedProjectPath,
-                    methodClassifications,
-                    message => Console.WriteLine(message));
-
-                Console.WriteLine();
-                if (result.Success)
-                {
-                    ConsoleHelper.PrintSuccess("✓ 方法分类调整成功！");
-                    ConsoleHelper.PrintInfo(result.Message);
-                    
-                    if (result.AnalysisResult != null)
-                    {
-                        Console.WriteLine();
-                        ConsoleHelper.PrintInfo($"重新分析了 {result.AnalysisResult.Features.Count} 个特性");
-                        ConsoleHelper.PrintInfo($"包含 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
-                    }
-                }
-                else
-                {
-                    ConsoleHelper.PrintError($"✗ 调整失败: {result.Message}");
-                }
-            }
-            catch (Exception ex)
-            {
-                ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
-            }
-        }
-
-        /// <summary>
-        /// 测试5：错误处理测试（无效文件）
-        /// </summary>
-        private async Task TestErrorHandling_InvalidFileAsync()
-        {
-            ConsoleHelper.PrintSection("测试5：错误处理测试（无效文件）");
-            Console.WriteLine();
-
-            ConsoleHelper.PrintInfo("测试场景：使用不存在的XML文件");
-            Console.WriteLine();
-
-            var request = new D3GenerationRequest
-            {
-                Brand = "ErrorTest",
-                Model = "InvalidFile",
-                DeviceType = "TestDevice",
-                Developer = "Bioyond",
-                IsOnlineSource = false,
-                LocalFeatureXmlPaths = new List<string> { "NonExistentFile.sila.xml" }
+                { "TemperatureController.GetTemperature", false },
+                { "TemperatureController.SetTemperature", false },
+                { "TemperatureController.Reset", true },
+                { "TemperatureController.Calibrate", true }
             };
 
-            try
+            ConsoleHelper.PrintInfo($"将调整 {methodClassifications.Count} 个方法的分类:");
+            foreach (var (methodName, isMaintenance) in methodClassifications)
             {
-                ConsoleHelper.PrintInfo("尝试生成D3项目（预期失败）...");
-                var result = await _orchestrationService.GenerateD3ProjectAsync(
-                    request,
-                    message => Console.WriteLine(message));
+                var category = isMaintenance ? "维护" : "操作";
+                ConsoleHelper.PrintInfo($"  - {methodName} → {category}");
+            }
+            Console.WriteLine();
 
-                Console.WriteLine();
-                if (!result.Success)
+            ConsoleHelper.PrintInfo("开始调整方法分类...");
+            var result = await _orchestrationService.AdjustMethodClassificationsAsync(
+                _lastGeneratedProjectPath!,
+                methodClassifications,
+                message => Console.WriteLine(message));
+
+            Console.WriteLine();
+            if (result.Success)
+            {
+                ConsoleHelper.PrintSuccess("✓ 方法分类调整成功！");
+                ConsoleHelper.PrintInfo(result.Message);
+                
+                if (result.AnalysisResult != null)
                 {
-                    ConsoleHelper.PrintSuccess("✓ 错误处理正确：成功捕获并报告了无效文件错误");
-                    ConsoleHelper.PrintInfo($"错误信息: {result.Message}");
-                }
-                else
-                {
-                    ConsoleHelper.PrintError("✗ 错误处理失败：应该报告错误但却成功了");
+                    Console.WriteLine();
+                    ConsoleHelper.PrintInfo($"重新分析了 {result.AnalysisResult.Features.Count} 个特性");
+                    ConsoleHelper.PrintInfo($"包含 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
                 }
             }
-            catch (Exception ex)
+            else
             {
-                ConsoleHelper.PrintSuccess("✓ 错误处理正确：抛出了异常");
-                ConsoleHelper.PrintInfo($"异常信息: {ex.Message}");
+                ConsoleHelper.PrintError($"✗ 调整失败: {result.Message}");
             }
         }
 
-        /// <summary>
-        /// 测试6：错误处理测试（编译失败场景）
-        /// </summary>
-        private async Task TestErrorHandling_CompilationFailureAsync()
+        private async Task Test_MultipleFeaturesAsync()
         {
-            ConsoleHelper.PrintSection("测试6：错误处理测试（编译失败）");
-            Console.WriteLine();
-
-            ConsoleHelper.PrintInfo("测试场景：尝试编译不存在的项目");
-            Console.WriteLine();
-
-            var nonExistentPath = Path.Combine(Path.GetTempPath(), "NonExistentProject_" + Guid.NewGuid());
-
-            try
-            {
-                ConsoleHelper.PrintInfo($"尝试编译不存在的项目: {nonExistentPath}");
-                var result = await _orchestrationService.CompileD3ProjectAsync(
-                    nonExistentPath,
-                    message => Console.WriteLine(message));
-
-                Console.WriteLine();
-                if (!result.Success)
-                {
-                    ConsoleHelper.PrintSuccess("✓ 错误处理正确：成功捕获并报告了编译错误");
-                    ConsoleHelper.PrintInfo($"错误信息: {result.Message}");
-                }
-                else
-                {
-                    ConsoleHelper.PrintError("✗ 错误处理失败：应该报告错误但却成功了");
-                }
-            }
-            catch (Exception ex)
-            {
-                ConsoleHelper.PrintSuccess("✓ 错误处理正确：抛出了异常");
-                ConsoleHelper.PrintInfo($"异常信息: {ex.Message}");
-            }
-        }
-
-        /// <summary>
-        /// 测试7：完整流程测试（多特性）
-        /// </summary>
-        private async Task TestCompleteWorkflow_MultipleFeatures()
-        {
-            ConsoleHelper.PrintSection("测试7：完整流程测试（多特性）");
-            Console.WriteLine();
-
-            // 查找多个示例XML文件
-            var workspaceRoot = Directory.GetCurrentDirectory();
-            var searchPaths = new[]
-            {
-                Path.Combine(workspaceRoot, "..\\..\\..\\"),
-                Path.Combine(workspaceRoot, "..\\SilaGeneratorWpf\\"),
-            };
-
-            var foundXmlFiles = new List<string>();
-            foreach (var searchPath in searchPaths)
-            {
-                try
-                {
-                    var fullPath = Path.GetFullPath(searchPath);
-                    if (Directory.Exists(fullPath))
-                    {
-                        var xmlFiles = Directory.GetFiles(fullPath, "*.sila.xml", SearchOption.TopDirectoryOnly);
-                        foundXmlFiles.AddRange(xmlFiles);
-                    }
-                }
-                catch { }
-            }
+            var foundXmlFiles = FindAllXmlFiles();
 
             if (!foundXmlFiles.Any())
             {
@@ -469,38 +269,211 @@ namespace Sila2DriverGen.TestConsole
                 return;
             }
 
-            // 显示找到的文件
             ConsoleHelper.PrintInfo($"找到 {foundXmlFiles.Count} 个XML文件：");
             for (int i = 0; i < foundXmlFiles.Count && i < 5; i++)
             {
                 ConsoleHelper.PrintInfo($"  {i + 1}. {Path.GetFileName(foundXmlFiles[i])}");
             }
             
-            // 选择前2个文件（如果有的话）
             var selectedFiles = foundXmlFiles.Take(Math.Min(2, foundXmlFiles.Count)).ToList();
             Console.WriteLine();
             ConsoleHelper.PrintInfo($"使用 {selectedFiles.Count} 个特性进行测试");
 
-            // 创建生成请求
-            var request = new D3GenerationRequest
-            {
-                Brand = "MultiTest",
-                Model = "Device01",
-                DeviceType = "MultiFeature",
-                Developer = "Bioyond",
-                IsOnlineSource = false,
-                LocalFeatureXmlPaths = selectedFiles
-            };
+            var request = CreateTestRequest("MultiTest", "Device01", "MultiFeature", selectedFiles);
 
             ConsoleHelper.PrintInfo("开始完整流程测试...");
             ConsoleHelper.PrintInfo($"设备信息: {request.Brand} {request.Model} ({request.DeviceType})");
             ConsoleHelper.PrintInfo($"特性数量: {selectedFiles.Count}");
             Console.WriteLine();
 
+            ConsoleHelper.PrintInfo("[1/2] 生成D3项目...");
+            var result = await _orchestrationService.GenerateD3ProjectAsync(
+                request,
+                message => Console.WriteLine($"  {message}"));
+
+            Console.WriteLine();
+            if (!result.Success)
+            {
+                ConsoleHelper.PrintError($"✗ 生成失败: {result.Message}");
+                return;
+            }
+
+            ConsoleHelper.PrintSuccess("✓ D3项目生成成功！");
+            ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
+            _lastGeneratedProjectPath = result.ProjectPath;
+
+            if (result.AnalysisResult != null)
+            {
+                Console.WriteLine();
+                ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
+                ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
+                
+                foreach (var feature in result.AnalysisResult.Features)
+                {
+                    ConsoleHelper.PrintInfo($"  特性: {feature.FeatureName}");
+                    ConsoleHelper.PrintInfo($"    方法数: {feature.Methods.Count}");
+                }
+            }
+
+            Console.WriteLine();
+            ConsoleHelper.PrintInfo("[2/2] 编译项目...");
+            var compileResult = await _orchestrationService.CompileD3ProjectAsync(
+                result.ProjectPath!,
+                message => Console.WriteLine($"  {message}"));
+
+            Console.WriteLine();
+            if (compileResult.Success)
+            {
+                ConsoleHelper.PrintSuccess("✓ 编译成功！");
+                ConsoleHelper.PrintInfo($"DLL路径: {compileResult.DllPath}");
+                ConsoleHelper.PrintInfo($"警告数: {compileResult.WarningCount}");
+                
+                Console.WriteLine();
+                ConsoleHelper.PrintSuccess("══════════════════════════════");
+                ConsoleHelper.PrintSuccess("  ✓ 完整流程测试全部通过！  ");
+                ConsoleHelper.PrintSuccess("══════════════════════════════");
+            }
+            else
+            {
+                ConsoleHelper.PrintError($"✗ 编译失败（{compileResult.ErrorCount} 个错误）");
+                if (!string.IsNullOrEmpty(compileResult.Message))
+                {
+                    Console.WriteLine();
+                    Console.WriteLine(compileResult.Message);
+                }
+            }
+        }
+
+        private async Task Test_ErrorHandling_InvalidFileAsync()
+        {
+            ConsoleHelper.PrintInfo("测试场景：使用不存在的XML文件");
+            Console.WriteLine();
+
+            var request = CreateTestRequest("ErrorTest", "InvalidFile", "TestDevice", 
+                new List<string> { "NonExistentFile.sila.xml" });
+
+            ConsoleHelper.PrintInfo("尝试生成D3项目（预期失败）...");
+            var result = await _orchestrationService.GenerateD3ProjectAsync(
+                request,
+                message => Console.WriteLine(message));
+
+            Console.WriteLine();
+            if (!result.Success)
+            {
+                ConsoleHelper.PrintSuccess("✓ 错误处理正确：成功捕获并报告了无效文件错误");
+                ConsoleHelper.PrintInfo($"错误信息: {result.Message}");
+            }
+            else
+            {
+                ConsoleHelper.PrintError("✗ 错误处理失败：应该报告错误但却成功了");
+            }
+        }
+
+        private async Task Test_ErrorHandling_CompilationFailureAsync()
+        {
+            ConsoleHelper.PrintInfo("测试场景：尝试编译不存在的项目");
+            Console.WriteLine();
+
+            var nonExistentPath = Path.Combine(Path.GetTempPath(), "NonExistentProject_" + Guid.NewGuid());
+
+            ConsoleHelper.PrintInfo($"尝试编译不存在的项目: {nonExistentPath}");
+            var result = await _orchestrationService.CompileD3ProjectAsync(
+                nonExistentPath,
+                message => Console.WriteLine(message));
+
+            Console.WriteLine();
+            if (!result.Success)
+            {
+                ConsoleHelper.PrintSuccess("✓ 错误处理正确：成功捕获并报告了编译错误");
+                ConsoleHelper.PrintInfo($"错误信息: {result.Message}");
+            }
+            else
+            {
+                ConsoleHelper.PrintError("✗ 错误处理失败：应该报告错误但却成功了");
+            }
+        }
+
+        private async Task Test_OnlineServerAsync()
+        {
+            ConsoleHelper.PrintInfo("测试在线服务器完整流程...");
+            ConsoleHelper.PrintInfo("正在扫描SiLA2服务器（3秒超时）...");
+            Console.WriteLine();
+
             try
             {
-                // 1. 生成项目
-                ConsoleHelper.PrintInfo("[1/2] 生成D3项目...");
+                var discoveryService = new SilaGeneratorWpf.Services.ServerDiscoveryService();
+                var servers = await discoveryService.ScanServersAsync(TimeSpan.FromSeconds(3));
+
+                if (servers == null || servers.Count == 0)
+                {
+                    ConsoleHelper.PrintWarning("未发现任何SiLA2服务器");
+                    Console.WriteLine();
+                    ConsoleHelper.PrintInfo("提示：如果需要测试在线服务器功能，请确保：");
+                    ConsoleHelper.PrintInfo("  1. 有SiLA2服务器正在运行");
+                    ConsoleHelper.PrintInfo("  2. 服务器在同一网络内");
+                    ConsoleHelper.PrintInfo("  3. mDNS服务已启用");
+                    return;
+                }
+
+                ConsoleHelper.PrintSuccess($"✓ 发现 {servers.Count} 个服务器");
+                Console.WriteLine();
+
+                var server = servers[0];
+                ConsoleHelper.PrintInfo($"使用服务器: {server.ServerName}");
+                ConsoleHelper.PrintInfo($"地址: {server.IPAddress}:{server.Port}");
+                ConsoleHelper.PrintInfo($"类型: {server.ServerType ?? "Unknown"}");
+                Console.WriteLine();
+
+                if (server.Features == null || server.Features.Count == 0)
+                {
+                    ConsoleHelper.PrintWarning("服务器没有任何特性");
+                    return;
+                }
+
+                ConsoleHelper.PrintInfo($"服务器包含 {server.Features.Count} 个特性：");
+                foreach (var feature in server.Features.Take(10))
+                {
+                    ConsoleHelper.PrintInfo($"  - {feature.DisplayName}");
+                }
+                if (server.Features.Count > 10)
+                {
+                    ConsoleHelper.PrintInfo($"  ... 还有 {server.Features.Count - 10} 个特性");
+                }
+                Console.WriteLine();
+
+                var serverData = discoveryService.GetServerData(server.Uuid);
+                if (serverData == null)
+                {
+                    ConsoleHelper.PrintError("无法获取服务器数据");
+                    return;
+                }
+
+                var features = new Dictionary<string, Tecan.Sila2.Feature>();
+                foreach (var feature in serverData.Features)
+                {
+                    features[feature.Identifier] = feature;
+                }
+
+                var request = new SilaGeneratorWpf.Services.D3GenerationRequest
+                {
+                    Brand = "OnlineTest",
+                    Model = server.ServerName.Replace(" ", "_").Replace("-", "_"),
+                    DeviceType = server.ServerType ?? "SilaDevice",
+                    Developer = "Bioyond",
+                    IsOnlineSource = true,
+                    ServerUuid = server.Uuid.ToString(),
+                    ServerIp = server.IPAddress,
+                    ServerPort = server.Port,
+                    Features = features
+                };
+
+                ConsoleHelper.PrintInfo("[1/2] 开始生成D3项目...");
+                ConsoleHelper.PrintInfo($"  品牌: {request.Brand}");
+                ConsoleHelper.PrintInfo($"  型号: {request.Model}");
+                ConsoleHelper.PrintInfo($"  设备类型: {request.DeviceType}");
+                ConsoleHelper.PrintInfo($"  特性数量: {features.Count}");
+                Console.WriteLine();
+
                 var result = await _orchestrationService.GenerateD3ProjectAsync(
                     request,
                     message => Console.WriteLine($"  {message}"));
@@ -520,17 +493,8 @@ namespace Sila2DriverGen.TestConsole
                 {
                     Console.WriteLine();
                     ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
-                    ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
-                    
-                    // 显示每个特性的详细信息
-                    foreach (var feature in result.AnalysisResult.Features)
-                    {
-                        ConsoleHelper.PrintInfo($"  特性: {feature.FeatureName}");
-                        ConsoleHelper.PrintInfo($"    方法数: {feature.Methods.Count}");
-                    }
                 }
 
-                // 2. 编译项目
                 Console.WriteLine();
                 ConsoleHelper.PrintInfo("[2/2] 编译项目...");
                 var compileResult = await _orchestrationService.CompileD3ProjectAsync(
@@ -542,79 +506,52 @@ namespace Sila2DriverGen.TestConsole
                 {
                     ConsoleHelper.PrintSuccess("✓ 编译成功！");
                     ConsoleHelper.PrintInfo($"DLL路径: {compileResult.DllPath}");
-                    ConsoleHelper.PrintInfo($"警告数: {compileResult.WarningCount}");
                     
                     Console.WriteLine();
                     ConsoleHelper.PrintSuccess("══════════════════════════════");
-                    ConsoleHelper.PrintSuccess("  ✓ 完整流程测试全部通过！  ");
+                    ConsoleHelper.PrintSuccess("  ✓ 在线服务器测试全部通过！  ");
                     ConsoleHelper.PrintSuccess("══════════════════════════════");
                 }
                 else
                 {
-                    ConsoleHelper.PrintError($"✗ 编译失败（{compileResult.ErrorCount} 个错误）");
-                    if (!string.IsNullOrEmpty(compileResult.Message))
-                    {
-                        Console.WriteLine();
-                        Console.WriteLine(compileResult.Message);
-                    }
+                    ConsoleHelper.PrintWarning($"编译失败（{compileResult.ErrorCount} 个错误）");
+                    ConsoleHelper.PrintWarning("这可能是生成的客户端代码的问题，但项目生成本身成功");
+                    ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
                 }
             }
             catch (Exception ex)
             {
                 ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
-                Console.WriteLine(ex.StackTrace);
             }
         }
+
+        #endregion
 
         private void ShowTestInstructions()
         {
             ConsoleHelper.PrintSection("测试说明");
+            Console.WriteLine();
             
             Console.WriteLine("本控制台用于测试 D3DriverOrchestrationService 的功能。");
             Console.WriteLine();
+
+            var testsByCategory = TestInfo.GetAllTests().GroupBy(t => t.Category);
+
+            foreach (var category in testsByCategory)
+            {
+                Console.WriteLine($"【{GetCategoryName(category.Key)}】");
+                foreach (var test in category)
+                {
+                    Console.WriteLine($"  {TestInfo.GetDisplayName(test.Item)}");
+                    ConsoleHelper.PrintInfo($"    {test.Description}");
+                    if (test.RequiresPrerequisite && test.Prerequisite.HasValue)
+                    {
+                        ConsoleHelper.PrintWarning($"    前置条件：需要先运行 {TestInfo.GetDisplayName(test.Prerequisite.Value)}");
+                    }
+                }
+                Console.WriteLine();
+            }
             
-            Console.WriteLine("【测试1】从本地XML生成D3项目");
-            ConsoleHelper.PrintInfo("  - 自动查找 TemperatureController-v1_0.sila.xml 文件");
-            ConsoleHelper.PrintInfo("  - 调用 GenerateD3ProjectAsync 生成项目");
-            ConsoleHelper.PrintInfo("  - 显示生成结果和项目路径");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试2】编译已生成的D3项目");
-            ConsoleHelper.PrintInfo("  - 使用测试1生成的项目路径");
-            ConsoleHelper.PrintInfo("  - 或手动输入项目路径");
-            ConsoleHelper.PrintInfo("  - 调用 CompileD3ProjectAsync 编译");
-            ConsoleHelper.PrintInfo("  - 显示编译结果和DLL路径");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试3】完整流程");
-            ConsoleHelper.PrintInfo("  - 依次执行测试1和测试2");
-            ConsoleHelper.PrintInfo("  - 验证完整的生成到编译流程");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试4】调整方法分类并重新生成");
-            ConsoleHelper.PrintInfo("  - 使用已生成的项目");
-            ConsoleHelper.PrintInfo("  - 创建示例方法分类配置");
-            ConsoleHelper.PrintInfo("  - 调用 AdjustMethodClassificationsAsync");
-            ConsoleHelper.PrintInfo("  - 验证D3Driver.cs文件已更新");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试5】错误处理测试（无效文件）");
-            ConsoleHelper.PrintInfo("  - 使用不存在的XML文件");
-            ConsoleHelper.PrintInfo("  - 验证错误捕获和报告机制");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试6】错误处理测试（编译失败）");
-            ConsoleHelper.PrintInfo("  - 尝试编译不存在的项目");
-            ConsoleHelper.PrintInfo("  - 验证编译错误处理");
-            
-            Console.WriteLine();
-            Console.WriteLine("【测试7】完整流程测试（多特性）");
-            ConsoleHelper.PrintInfo("  - 自动查找多个.sila.xml文件");
-            ConsoleHelper.PrintInfo("  - 从多个特性生成完整D3项目");
-            ConsoleHelper.PrintInfo("  - 编译并验证结果");
-            ConsoleHelper.PrintInfo("  - 验证多特性集成功能");
-            
-            Console.WriteLine();
             Console.WriteLine("【前置条件】");
             ConsoleHelper.PrintWarning("  - 需要 TemperatureController-v1_0.sila.xml 文件");
             ConsoleHelper.PrintWarning("  - 需要安装 .NET 8.0 SDK");
@@ -630,6 +567,20 @@ namespace Sila2DriverGen.TestConsole
             ConsoleHelper.PrintInfo("  ✓ 方法分类调整功能");
             ConsoleHelper.PrintInfo("  ✓ 错误处理和进度回调");
             ConsoleHelper.PrintInfo("  ✓ 边界条件测试");
+            
+            Console.WriteLine();
+        }
+
+        private string GetCategoryName(TestCategory category)
+        {
+            return category switch
+            {
+                TestCategory.Basic => "基础功能测试",
+                TestCategory.Integration => "集成测试",
+                TestCategory.ErrorHandling => "错误处理测试",
+                TestCategory.OnlineServer => "在线服务器测试",
+                _ => category.ToString()
+            };
         }
     }
 }
