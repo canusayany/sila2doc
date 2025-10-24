@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using SilaGeneratorWpf.Services;
 
@@ -48,6 +49,9 @@ namespace Sila2DriverGen.TestConsole
             // 测试4：错误处理
             allPassed &= await RunTest("测试4：无效文件处理", TestInvalidFileAsync);
             allPassed &= await RunTest("测试5：编译失败处理", TestCompileFailureAsync);
+            
+            // 测试6：多特性测试
+            allPassed &= await RunTest("测试6：多特性完整流程", TestMultipleFeaturesAsync);
 
             Console.WriteLine();
             ConsoleHelper.PrintSection("═══ 自动化测试结果 ═══");
@@ -245,6 +249,67 @@ namespace Sila2DriverGen.TestConsole
             return false;
         }
 
+        private async Task<bool> TestMultipleFeaturesAsync()
+        {
+            ConsoleHelper.PrintInfo("测试多特性完整流程...");
+
+            // 查找所有XML文件
+            var xmlFiles = FindAllXmlFiles();
+            if (xmlFiles.Count < 2)
+            {
+                ConsoleHelper.PrintWarning($"只找到 {xmlFiles.Count} 个XML文件，跳过多特性测试");
+                return true; // 不算失败
+            }
+
+            // 使用前2个文件
+            var selectedFiles = xmlFiles.Take(2).ToList();
+            ConsoleHelper.PrintInfo($"使用 {selectedFiles.Count} 个特性文件进行测试");
+
+            var request = new D3GenerationRequest
+            {
+                Brand = "MultiFeatureTest",
+                Model = "Device",
+                DeviceType = "TestDevice",
+                Developer = "Bioyond",
+                IsOnlineSource = false,
+                LocalFeatureXmlPaths = selectedFiles
+            };
+
+            // 生成项目
+            var result = await _orchestrationService.GenerateD3ProjectAsync(
+                request,
+                message => Console.WriteLine($"  {message}"));
+
+            if (!result.Success)
+            {
+                ConsoleHelper.PrintError($"多特性项目生成失败: {result.Message}");
+                return false;
+            }
+
+            _lastGeneratedProjectPath = result.ProjectPath;
+            ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
+            
+            if (result.AnalysisResult != null)
+            {
+                ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
+            }
+
+            // 编译项目
+            var compileResult = await _orchestrationService.CompileD3ProjectAsync(
+                result.ProjectPath!,
+                message => { }); // 静默
+
+            if (compileResult.Success)
+            {
+                ConsoleHelper.PrintInfo($"多特性项目编译成功");
+                ConsoleHelper.PrintInfo($"DLL路径: {compileResult.DllPath}");
+                return true;
+            }
+
+            ConsoleHelper.PrintError($"多特性项目编译失败: {compileResult.Message}");
+            return false;
+        }
+
         private string? FindXmlFile()
         {
             var workspaceRoot = Directory.GetCurrentDirectory();
@@ -266,6 +331,41 @@ namespace Sila2DriverGen.TestConsole
             }
 
             return null;
+        }
+
+        private List<string> FindAllXmlFiles()
+        {
+            var foundFiles = new List<string>();
+            var workspaceRoot = Directory.GetCurrentDirectory();
+            var searchPaths = new[]
+            {
+                workspaceRoot,
+                Path.Combine(workspaceRoot, "..\\SilaGeneratorWpf"),
+                Path.Combine(workspaceRoot, "..\\.."),
+                Path.Combine(workspaceRoot, "..\\..\\..")
+            };
+
+            foreach (var searchPath in searchPaths)
+            {
+                try
+                {
+                    var fullPath = Path.GetFullPath(searchPath);
+                    if (Directory.Exists(fullPath))
+                    {
+                        var xmlFiles = Directory.GetFiles(fullPath, "*.sila.xml", SearchOption.TopDirectoryOnly);
+                        foreach (var file in xmlFiles)
+                        {
+                            if (!foundFiles.Contains(file))
+                            {
+                                foundFiles.Add(file);
+                            }
+                        }
+                    }
+                }
+                catch { }
+            }
+
+            return foundFiles;
         }
     }
 }

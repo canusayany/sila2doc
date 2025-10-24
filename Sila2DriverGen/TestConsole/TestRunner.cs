@@ -36,7 +36,8 @@ namespace Sila2DriverGen.TestConsole
                         "测试4：调整方法分类并重新生成",
                         "测试5：错误处理测试（无效文件）",
                         "测试6：错误处理测试（编译失败）",
-                        "测试7：查看测试说明",
+                        "测试7：完整流程测试（多特性）",
+                        "测试8：查看测试说明",
                         "退出"
                     });
 
@@ -61,9 +62,12 @@ namespace Sila2DriverGen.TestConsole
                         await TestErrorHandling_CompilationFailureAsync();
                         break;
                     case 7:
-                        ShowTestInstructions();
+                        await TestCompleteWorkflow_MultipleFeatures();
                         break;
                     case 8:
+                        ShowTestInstructions();
+                        break;
+                    case 9:
                         exit = true;
                         break;
                     default:
@@ -428,6 +432,140 @@ namespace Sila2DriverGen.TestConsole
             }
         }
 
+        /// <summary>
+        /// 测试7：完整流程测试（多特性）
+        /// </summary>
+        private async Task TestCompleteWorkflow_MultipleFeatures()
+        {
+            ConsoleHelper.PrintSection("测试7：完整流程测试（多特性）");
+            Console.WriteLine();
+
+            // 查找多个示例XML文件
+            var workspaceRoot = Directory.GetCurrentDirectory();
+            var searchPaths = new[]
+            {
+                Path.Combine(workspaceRoot, "..\\..\\..\\"),
+                Path.Combine(workspaceRoot, "..\\SilaGeneratorWpf\\"),
+            };
+
+            var foundXmlFiles = new List<string>();
+            foreach (var searchPath in searchPaths)
+            {
+                try
+                {
+                    var fullPath = Path.GetFullPath(searchPath);
+                    if (Directory.Exists(fullPath))
+                    {
+                        var xmlFiles = Directory.GetFiles(fullPath, "*.sila.xml", SearchOption.TopDirectoryOnly);
+                        foundXmlFiles.AddRange(xmlFiles);
+                    }
+                }
+                catch { }
+            }
+
+            if (!foundXmlFiles.Any())
+            {
+                ConsoleHelper.PrintError("未找到任何.sila.xml文件");
+                return;
+            }
+
+            // 显示找到的文件
+            ConsoleHelper.PrintInfo($"找到 {foundXmlFiles.Count} 个XML文件：");
+            for (int i = 0; i < foundXmlFiles.Count && i < 5; i++)
+            {
+                ConsoleHelper.PrintInfo($"  {i + 1}. {Path.GetFileName(foundXmlFiles[i])}");
+            }
+            
+            // 选择前2个文件（如果有的话）
+            var selectedFiles = foundXmlFiles.Take(Math.Min(2, foundXmlFiles.Count)).ToList();
+            Console.WriteLine();
+            ConsoleHelper.PrintInfo($"使用 {selectedFiles.Count} 个特性进行测试");
+
+            // 创建生成请求
+            var request = new D3GenerationRequest
+            {
+                Brand = "MultiTest",
+                Model = "Device01",
+                DeviceType = "MultiFeature",
+                Developer = "Bioyond",
+                IsOnlineSource = false,
+                LocalFeatureXmlPaths = selectedFiles
+            };
+
+            ConsoleHelper.PrintInfo("开始完整流程测试...");
+            ConsoleHelper.PrintInfo($"设备信息: {request.Brand} {request.Model} ({request.DeviceType})");
+            ConsoleHelper.PrintInfo($"特性数量: {selectedFiles.Count}");
+            Console.WriteLine();
+
+            try
+            {
+                // 1. 生成项目
+                ConsoleHelper.PrintInfo("[1/2] 生成D3项目...");
+                var result = await _orchestrationService.GenerateD3ProjectAsync(
+                    request,
+                    message => Console.WriteLine($"  {message}"));
+
+                Console.WriteLine();
+                if (!result.Success)
+                {
+                    ConsoleHelper.PrintError($"✗ 生成失败: {result.Message}");
+                    return;
+                }
+
+                ConsoleHelper.PrintSuccess("✓ D3项目生成成功！");
+                ConsoleHelper.PrintInfo($"项目路径: {result.ProjectPath}");
+                _lastGeneratedProjectPath = result.ProjectPath;
+
+                if (result.AnalysisResult != null)
+                {
+                    Console.WriteLine();
+                    ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Count} 个特性");
+                    ConsoleHelper.PrintInfo($"检测到 {result.AnalysisResult.Features.Sum(f => f.Methods.Count)} 个方法");
+                    
+                    // 显示每个特性的详细信息
+                    foreach (var feature in result.AnalysisResult.Features)
+                    {
+                        ConsoleHelper.PrintInfo($"  特性: {feature.FeatureName}");
+                        ConsoleHelper.PrintInfo($"    方法数: {feature.Methods.Count}");
+                    }
+                }
+
+                // 2. 编译项目
+                Console.WriteLine();
+                ConsoleHelper.PrintInfo("[2/2] 编译项目...");
+                var compileResult = await _orchestrationService.CompileD3ProjectAsync(
+                    result.ProjectPath!,
+                    message => Console.WriteLine($"  {message}"));
+
+                Console.WriteLine();
+                if (compileResult.Success)
+                {
+                    ConsoleHelper.PrintSuccess("✓ 编译成功！");
+                    ConsoleHelper.PrintInfo($"DLL路径: {compileResult.DllPath}");
+                    ConsoleHelper.PrintInfo($"警告数: {compileResult.WarningCount}");
+                    
+                    Console.WriteLine();
+                    ConsoleHelper.PrintSuccess("══════════════════════════════");
+                    ConsoleHelper.PrintSuccess("  ✓ 完整流程测试全部通过！  ");
+                    ConsoleHelper.PrintSuccess("══════════════════════════════");
+                }
+                else
+                {
+                    ConsoleHelper.PrintError($"✗ 编译失败（{compileResult.ErrorCount} 个错误）");
+                    if (!string.IsNullOrEmpty(compileResult.Message))
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine(compileResult.Message);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                ConsoleHelper.PrintError($"✗ 发生异常: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
+            }
+        }
+
         private void ShowTestInstructions()
         {
             ConsoleHelper.PrintSection("测试说明");
@@ -468,6 +606,13 @@ namespace Sila2DriverGen.TestConsole
             Console.WriteLine("【测试6】错误处理测试（编译失败）");
             ConsoleHelper.PrintInfo("  - 尝试编译不存在的项目");
             ConsoleHelper.PrintInfo("  - 验证编译错误处理");
+            
+            Console.WriteLine();
+            Console.WriteLine("【测试7】完整流程测试（多特性）");
+            ConsoleHelper.PrintInfo("  - 自动查找多个.sila.xml文件");
+            ConsoleHelper.PrintInfo("  - 从多个特性生成完整D3项目");
+            ConsoleHelper.PrintInfo("  - 编译并验证结果");
+            ConsoleHelper.PrintInfo("  - 验证多特性集成功能");
             
             Console.WriteLine();
             Console.WriteLine("【前置条件】");

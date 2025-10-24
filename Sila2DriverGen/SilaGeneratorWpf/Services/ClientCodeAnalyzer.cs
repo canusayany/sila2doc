@@ -441,6 +441,7 @@ namespace SilaGeneratorWpf.Services
                     MetadataReference.CreateFromFile(typeof(System.Linq.Enumerable).Assembly.Location),
                     MetadataReference.CreateFromFile(Assembly.Load("System.Runtime").Location),
                     MetadataReference.CreateFromFile(Assembly.Load("netstandard").Location),
+                    MetadataReference.CreateFromFile(Assembly.Load("System.Collections").Location),
                 };
 
                 // 添加 .NET 标准库引用
