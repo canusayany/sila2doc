@@ -141,7 +141,9 @@ namespace SilaGeneratorWpf.Services
                     Description = ExtractSummary(method),
                     XmlDocumentation = GetXmlDocumentation(method),
                     FeatureName = featureInfo.FeatureName,
-                    Category = DetermineMethodCategory(method)
+                    IsIncluded = true,  // 默认包含
+                    IsOperations = false,  // 默认不是调度方法
+                    IsMaintenance = DetermineIfMaintenance(method)  // 根据方法名判断是否为维护方法
                 };
 
                 // 处理参数
@@ -223,16 +225,15 @@ namespace SilaGeneratorWpf.Services
         /// <summary>
         /// 确定方法分类
         /// </summary>
-        private MethodCategory DetermineMethodCategory(MethodInfo method)
+        private bool DetermineIfMaintenance(MethodInfo method)
         {
-            // 简化实现：默认为 Operations
-            // 实际应该根据方法名称或特性判断
+            // 简化实现：根据方法名称判断
             var methodName = method.Name.ToLower();
-            if (methodName.Contains("maintenance") || methodName.Contains("calibrate") || methodName.Contains("reset"))
-            {
-                return MethodCategory.Maintenance;
-            }
-            return MethodCategory.Operations;
+            return methodName.Contains("maintenance") || 
+                   methodName.Contains("calibrate") || 
+                   methodName.Contains("reset") ||
+                   methodName.Contains("init") ||
+                   methodName.Contains("config");
         }
 
         /// <summary>

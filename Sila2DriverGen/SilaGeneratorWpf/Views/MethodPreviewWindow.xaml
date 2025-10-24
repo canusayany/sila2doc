@@ -5,7 +5,7 @@
     xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     Title="方法预览与特性调整"
-    Width="1000"
+    Width="1200"
     Height="600"
     WindowStartupLocation="CenterOwner"
     mc:Ignorable="d">
@@ -38,26 +38,34 @@
             IsReadOnly="False"
             ItemsSource="{Binding MethodPreviewData}">
             <DataGrid.Columns>
+                <DataGridCheckBoxColumn
+                    Width="70"
+                    Binding="{Binding IsIncluded, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Header="包含" />
                 <DataGridTextColumn
                     Width="150"
                     Binding="{Binding FeatureName}"
                     Header="特性名称"
                     IsReadOnly="True" />
                 <DataGridTextColumn
-                    Width="200"
+                    Width="180"
                     Binding="{Binding MethodName}"
                     Header="方法名称"
                     IsReadOnly="True" />
                 <DataGridTextColumn
-                    Width="100"
+                    Width="80"
                     Binding="{Binding MethodType}"
                     Header="类型"
                     IsReadOnly="True" />
                 <DataGridTextColumn
-                    Width="100"
+                    Width="90"
                     Binding="{Binding ReturnType}"
                     Header="返回值"
                     IsReadOnly="True" />
+                <DataGridCheckBoxColumn
+                    Width="80"
+                    Binding="{Binding IsOperations, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
+                    Header="调度方法" />
                 <DataGridCheckBoxColumn
                     Width="80"
                     Binding="{Binding IsMaintenance, Mode=TwoWay, UpdateSourceTrigger=PropertyChanged}"
@@ -71,44 +79,70 @@
         </DataGrid>
 
         <!--  操作按钮  -->
-        <StackPanel
-            Grid.Row="2"
-            HorizontalAlignment="Right"
-            Orientation="Horizontal">
-            <Button
-                Padding="15,8"
-                Background="#3498db"
-                BorderThickness="0"
-                Command="{Binding SetAllMaintenanceCommand}"
-                Content="全部设为维护方法"
-                Foreground="White"
-                Margin="0,0,10,0"
-                ToolTip="将所有方法标记为维护方法（MethodMaintenance）" />
-            <Button
-                Padding="15,8"
-                Background="#e67e22"
-                BorderThickness="0"
-                Command="{Binding SetAllOperationsCommand}"
-                Content="全部设为调度方法"
-                Foreground="White"
-                Margin="0,0,10,0"
-                ToolTip="将所有方法标记为调度方法（MethodOperations）" />
-            <Button
-                Padding="15,8"
-                Background="#95a5a6"
-                BorderThickness="0"
-                Command="{Binding CancelCommand}"
-                Content="取消"
-                Foreground="White"
-                Margin="0,0,10,0" />
-            <Button
-                Padding="15,8"
-                Background="#27ae60"
-                BorderThickness="0"
-                Command="{Binding ConfirmCommand}"
-                Content="确认"
-                Foreground="White" />
-        </StackPanel>
+        <Grid Grid.Row="2">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            
+            <!--  左侧批量操作按钮  -->
+            <StackPanel Grid.Column="0" Orientation="Horizontal" HorizontalAlignment="Left">
+                <Button
+                    Padding="12,8"
+                    Background="#3498db"
+                    BorderThickness="0"
+                    Command="{Binding ToggleAllIncludedCommand}"
+                    Content="全选/全不选"
+                    Foreground="White"
+                    Margin="0,0,10,0"
+                    ToolTip="切换所有方法的包含状态" />
+                <Button
+                    Padding="12,8"
+                    Background="#9b59b6"
+                    BorderThickness="0"
+                    Command="{Binding SetAllOperationsCommand}"
+                    Content="全部调度"
+                    Foreground="White"
+                    Margin="0,0,10,0"
+                    ToolTip="将所有方法标记为调度方法" />
+                <Button
+                    Padding="12,8"
+                    Background="#e67e22"
+                    BorderThickness="0"
+                    Command="{Binding SetAllMaintenanceCommand}"
+                    Content="全部维护"
+                    Foreground="White"
+                    Margin="0,0,10,0"
+                    ToolTip="将所有方法标记为维护方法" />
+                <Button
+                    Padding="12,8"
+                    Background="#34495e"
+                    BorderThickness="0"
+                    Command="{Binding ClearAllAttributesCommand}"
+                    Content="清除特性"
+                    Foreground="White"
+                    ToolTip="清除所有方法的调度/维护标记" />
+            </StackPanel>
+            
+            <!--  右侧确认/取消按钮  -->
+            <StackPanel Grid.Column="1" HorizontalAlignment="Right" Orientation="Horizontal">
+                <Button
+                    Padding="15,8"
+                    Background="#95a5a6"
+                    BorderThickness="0"
+                    Command="{Binding CancelCommand}"
+                    Content="取消"
+                    Foreground="White"
+                    Margin="0,0,10,0" />
+                <Button
+                    Padding="15,8"
+                    Background="#27ae60"
+                    BorderThickness="0"
+                    Command="{Binding ConfirmCommand}"
+                    Content="确认"
+                    Foreground="White" />
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>
 

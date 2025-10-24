@@ -984,7 +984,7 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         /// <summary>
-        /// 同步方法分类信息（从 MethodPreviewData 的 IsMaintenance 同步到 MethodGenerationInfo）
+        /// 同步方法分类信息（从 MethodPreviewData 同步到 MethodGenerationInfo）
         /// </summary>
         private void SyncMethodClassification(List<ClientFeatureInfo> features)
         {
@@ -996,8 +996,18 @@ namespace SilaGeneratorWpf.ViewModels
                 var method = feature.Methods.FirstOrDefault(m => m.Name == previewData.MethodName);
                 if (method == null) continue;
 
-                // 同步方法分类
-                method.Category = previewData.IsMaintenance ? MethodCategory.Maintenance : MethodCategory.Operations;
+                // 同步方法标记
+                method.IsIncluded = previewData.IsIncluded;
+                method.IsOperations = previewData.IsOperations;
+                method.IsMaintenance = previewData.IsMaintenance;
+                
+                // 保持向后兼容（已废弃的Category字段）
+                #pragma warning disable CS0618
+                if (previewData.IsMaintenance)
+                    method.Category = MethodCategory.Maintenance;
+                else if (previewData.IsOperations)
+                    method.Category = MethodCategory.Operations;
+                #pragma warning restore CS0618
             }
         }
 

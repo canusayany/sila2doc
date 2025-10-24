@@ -1,5 +1,6 @@
 using System;
 using System.Collections.ObjectModel;
+using System.Linq;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using SilaGeneratorWpf.Models;
@@ -30,6 +31,17 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         [RelayCommand]
+        private void ToggleAllIncluded()
+        {
+            // 如果全部包含，则全部不包含；否则全部包含
+            bool allIncluded = MethodPreviewData.All(m => m.IsIncluded);
+            foreach (var method in MethodPreviewData)
+            {
+                method.IsIncluded = !allIncluded;
+            }
+        }
+
+        [RelayCommand]
         private void SetAllMaintenance()
         {
             foreach (var method in MethodPreviewData)
@@ -43,6 +55,16 @@ namespace SilaGeneratorWpf.ViewModels
         {
             foreach (var method in MethodPreviewData)
             {
+                method.IsOperations = true;
+            }
+        }
+
+        [RelayCommand]
+        private void ClearAllAttributes()
+        {
+            foreach (var method in MethodPreviewData)
+            {
+                method.IsOperations = false;
                 method.IsMaintenance = false;
             }
         }

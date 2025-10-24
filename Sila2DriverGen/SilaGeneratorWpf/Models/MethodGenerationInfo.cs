@@ -34,9 +34,25 @@ namespace SilaGeneratorWpf.Models
         public string Description { get; set; } = string.Empty;
 
         /// <summary>
-        /// 方法分类
+        /// 方法分类（已弃用，保留用于向后兼容）
         /// </summary>
+        [Obsolete("请使用 IsOperations 和 IsMaintenance 替代")]
         public MethodCategory Category { get; set; } = MethodCategory.Operations;
+
+        /// <summary>
+        /// 是否包含在D3Driver中（只有勾选此项的方法才会生成）
+        /// </summary>
+        public bool IsIncluded { get; set; } = true;
+
+        /// <summary>
+        /// 是否为调度方法（生成 [MethodOperations] 特性）
+        /// </summary>
+        public bool IsOperations { get; set; } = false;
+
+        /// <summary>
+        /// 是否为维护方法（生成 [MethodMaintenance] 特性）
+        /// </summary>
+        public bool IsMaintenance { get; set; } = false;
 
         /// <summary>
         /// 是否为属性

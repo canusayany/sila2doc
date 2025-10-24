@@ -85,7 +85,19 @@ namespace SilaGeneratorWpf.Models
         private string _description = string.Empty;
 
         /// <summary>
-        /// 是否为维护方法（勾选后生成 MethodMaintenance 特性，否则生成 MethodOperations 特性）
+        /// 是否包含在D3Driver中（只有勾选此项的方法才会被生成）
+        /// </summary>
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private bool _isIncluded = true;
+
+        /// <summary>
+        /// 是否为调度方法（生成 [MethodOperations] 特性）
+        /// </summary>
+        [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
+        private bool _isOperations = false;
+
+        /// <summary>
+        /// 是否为维护方法（生成 [MethodMaintenance] 特性）
         /// </summary>
         [CommunityToolkit.Mvvm.ComponentModel.ObservableProperty]
         private bool _isMaintenance = false;

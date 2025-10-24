@@ -341,7 +341,9 @@ namespace SilaGeneratorWpf.Services
                     var methodKey = $"{feature.FeatureName}.{method.Name}";
                     if (classifications.TryGetValue(methodKey, out var isMaintenance))
                     {
-                        method.Category = isMaintenance ? MethodCategory.Maintenance : MethodCategory.Operations;
+                        // 使用新的字段
+                        method.IsMaintenance = isMaintenance;
+                        method.IsOperations = !isMaintenance;
                     }
                 }
             }

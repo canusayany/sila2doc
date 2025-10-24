@@ -93,6 +93,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
             driverClass.Comments.Add(new CodeCommentStatement("<remarks>", true));
             driverClass.Comments.Add(new CodeCommentStatement("能被D3调用的方法必须是同步的。", true));
             driverClass.Comments.Add(new CodeCommentStatement("带有MethodOperations特性的方法为调度方法，带有MethodMaintenance特性的为维护方法。", true));
+            driverClass.Comments.Add(new CodeCommentStatement("方法可以同时标记为调度和维护方法，或两者都不标记。", true));
             driverClass.Comments.Add(new CodeCommentStatement("</remarks>", true));
         }
 
@@ -101,21 +102,27 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// </summary>
         private void AddMethods(CodeTypeDeclaration driverClass, List<MethodGenerationInfo> methods)
         {
-            // 按分类分组
-            var operationMethods = methods.Where(m => m.Category == MethodCategory.Operations).ToList();
-            var maintenanceMethods = methods.Where(m => m.Category == MethodCategory.Maintenance).ToList();
+            // 只包含标记为 IsIncluded 的方法
+            var includedMethods = methods.Where(m => m.IsIncluded).ToList();
+            
+            _logger.LogInformation($"共 {methods.Count} 个方法，其中 {includedMethods.Count} 个被包含在D3Driver中");
 
-            // 添加操作方法
-            foreach (var method in operationMethods)
-            {
-                AddMethod(driverClass, method, isMaintenanceMethod: false);
-            }
-
-            // 添加维护方法（带序号）
+            // 先统计需要维护序号的方法
+            var maintenanceMethods = includedMethods.Where(m => m.IsMaintenance).ToList();
+            var maintenanceIndexMap = new Dictionary<string, int>();
             int maintenanceIndex = 1;
             foreach (var method in maintenanceMethods)
             {
-                AddMethod(driverClass, method, isMaintenanceMethod: true, maintenanceOrder: maintenanceIndex++);
+                maintenanceIndexMap[method.Name] = maintenanceIndex++;
+            }
+
+            // 添加所有方法
+            foreach (var method in includedMethods)
+            {
+                int? maintenanceOrder = method.IsMaintenance && maintenanceIndexMap.ContainsKey(method.Name) 
+                    ? maintenanceIndexMap[method.Name] 
+                    : null;
+                AddMethod(driverClass, method, maintenanceOrder);
             }
         }
 
@@ -125,8 +132,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
         private void AddMethod(
             CodeTypeDeclaration driverClass,
             MethodGenerationInfo method,
-            bool isMaintenanceMethod,
-            int maintenanceOrder = 0)
+            int? maintenanceOrder = null)
         {
             var codeMethod = new CodeMemberMethod
             {
@@ -134,17 +140,19 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 Attributes = MemberAttributes.Public
             };
 
-            // 添加 MethodOperations 或 MethodMaintenance 特性
-            if (isMaintenanceMethod)
+            // 添加 MethodOperations 特性（如果标记了）
+            if (method.IsOperations)
             {
-                var attribute = new CodeAttributeDeclaration("MethodMaintenance",
-                    new CodeAttributeArgument(new CodePrimitiveExpression(maintenanceOrder)));
-                codeMethod.CustomAttributes.Add(attribute);
+                var operationsAttribute = new CodeAttributeDeclaration("MethodOperations");
+                codeMethod.CustomAttributes.Add(operationsAttribute);
             }
-            else
+
+            // 添加 MethodMaintenance 特性（如果标记了）
+            if (method.IsMaintenance && maintenanceOrder.HasValue)
             {
-                var attribute = new CodeAttributeDeclaration("MethodOperations");
-                codeMethod.CustomAttributes.Add(attribute);
+                var maintenanceAttribute = new CodeAttributeDeclaration("MethodMaintenance",
+                    new CodeAttributeArgument(new CodePrimitiveExpression(maintenanceOrder.Value)));
+                codeMethod.CustomAttributes.Add(maintenanceAttribute);
             }
 
             // 添加 XML 注释
