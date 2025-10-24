@@ -60,7 +60,8 @@ namespace Tecan.Sila2.Generator.Generators
                 Imports =
                 {
                     new CodeNamespaceImport("System"),
-                    new CodeNamespaceImport("Tecan.Sila2")
+                    new CodeNamespaceImport("Tecan.Sila2"),
+                    new CodeNamespaceImport("Newtonsoft.Json")
                 }
             });
             var nSpace = new CodeNamespace(ns);
@@ -617,6 +618,8 @@ namespace Tecan.Sila2.Generator.Generators
         {
             // add default constructor
             var defaultConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };
+            // 添加 [JsonConstructor] 特性用于 JSON 序列化
+            defaultConstructor.CustomAttributes.Add(new CodeAttributeDeclaration("JsonConstructor"));
             dto.Members.Add( defaultConstructor );
             defaultConstructor.WriteDocumentation( "Create a new instance" );
             var copyConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };
@@ -711,6 +714,8 @@ namespace Tecan.Sila2.Generator.Generators
         {
             // add default constructor
             var defaultConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };
+            // 添加 [JsonConstructor] 特性用于 JSON 序列化
+            defaultConstructor.CustomAttributes.Add(new CodeAttributeDeclaration("JsonConstructor"));
             defaultConstructor.WriteDocumentation( "Initializes a new instance (to be used by the serializer)" );
             dto.Members.Add( defaultConstructor );
             var copyConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };

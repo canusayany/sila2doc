@@ -3244,6 +3244,151 @@ var deserializeStatement = new CodeSnippetStatement(
 
 ---
 
-**项目状态**：✅ **已完成并全面验证**（所有测试通过，类型名称生成已修复）
-**最后更新**：2024-10-24 16:00
+---
+
+## 17. 为DTO构造函数添加[JsonConstructor]特性（2024-10-24 16:30）
+
+### 17.1 需求背景
+
+用户要求在生成的DTO类的构造函数前添加 `[JsonConstructor]` 特性，以明确指示 JSON 序列化器（如 Newtonsoft.Json）使用哪个构造函数来创建对象。
+
+### 17.2 实现方案
+
+修改 `Generator/Generators/DtoGenerator.cs` 文件：
+
+1. **添加命名空间导入**（第64行）：
+```csharp
+// 在 GenerateInterfaceUnit 方法中添加
+new CodeNamespaceImport("Newtonsoft.Json")
+```
+
+2. **在 GenerateMethodDtoConstructors 方法中添加特性**（第622行）：
+```csharp
+var defaultConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };
+// 添加 [JsonConstructor] 特性用于 JSON 序列化
+defaultConstructor.CustomAttributes.Add(new CodeAttributeDeclaration("JsonConstructor"));
+```
+
+3. **在 GenerateExtractionConstructors 方法中添加特性**（第718行）：
+```csharp
+var defaultConstructor = new CodeConstructor() { Attributes = MemberAttributes.Public };
+// 添加 [JsonConstructor] 特性用于 JSON 序列化
+defaultConstructor.CustomAttributes.Add(new CodeAttributeDeclaration("JsonConstructor"));
+```
+
+### 17.3 生成的代码示例
+
+**修改前**：
+```csharp
+using System;
+using Tecan.Sila2;
+
+public class SetAnyTypeValueRequestDto
+{
+    public SetAnyTypeValueRequestDto()
+    {
+    }
+    
+    public SetAnyTypeValueRequestDto(DynamicObjectProperty anyTypeValue, IBinaryStore store)
+    {
+        // ...
+    }
+}
+```
+
+**修改后**：
+```csharp
+using System;
+using Tecan.Sila2;
+using Newtonsoft.Json;
+
+public class SetAnyTypeValueRequestDto
+{
+    [JsonConstructor()]
+    public SetAnyTypeValueRequestDto()
+    {
+    }
+    
+    public SetAnyTypeValueRequestDto(DynamicObjectProperty anyTypeValue, IBinaryStore store)
+    {
+        // ...
+    }
+}
+```
+
+### 17.4 技术要点
+
+1. **为什么只在默认构造函数上添加**：
+   - DTO类通常有多个构造函数（默认构造函数和带参数的构造函数）
+   - `[JsonConstructor]` 特性只能标记一个构造函数
+   - JSON 序列化器使用默认无参构造函数，然后通过属性设置器填充数据
+
+2. **使用 CodeDOM 添加特性**：
+   - 使用 `CustomAttributes.Add()` 方法
+   - 使用 `CodeAttributeDeclaration` 创建特性声明
+   - 特性名称使用简单名称（不需要 "Attribute" 后缀）
+
+3. **命名空间管理**：
+   - 在生成的代码单元中添加 `using Newtonsoft.Json;`
+   - 确保特性能够正确解析
+
+### 17.5 影响范围
+
+此修改影响所有通过 Tecan Generator 生成的 DTO 类：
+- 请求 DTO（RequestDto）
+- 响应 DTO（ResponseDto）
+- 所有数据传输对象
+
+### 17.6 验证结果
+
+**编译验证**：✅ 成功
+- Generator 项目编译通过
+- 整个解决方案编译通过
+
+**代码生成验证**：✅ 通过
+- 生成的 DTO 类包含 `[JsonConstructor()]` 特性
+- 特性只添加到默认构造函数上
+- `using Newtonsoft.Json;` 命名空间被正确导入
+
+**示例验证**（AnyTypeTestDtos.cs）：
+```csharp
+// 找到 4 个构造函数
+[JsonConstructor()]
+public SetAnyTypeValueRequestDto() { }
+
+public SetAnyTypeValueRequestDto(DynamicObjectProperty anyTypeValue, IBinaryStore store) { }
+
+[JsonConstructor()]
+public SetAnyTypeValueResponseDto() { }
+
+public SetAnyTypeValueResponseDto(SetAnyTypeValueResponse inner, IBinaryStore store) { }
+```
+
+### 17.7 修改的文件清单
+
+| 文件 | 修改内容 | 行号 | 状态 |
+|------|---------|------|------|
+| `Generator/Generators/DtoGenerator.cs` | 添加 `Newtonsoft.Json` 命名空间导入 | 64 | ✅ |
+| `Generator/Generators/DtoGenerator.cs` | 在 `GenerateMethodDtoConstructors` 中添加特性 | 622 | ✅ |
+| `Generator/Generators/DtoGenerator.cs` | 在 `GenerateExtractionConstructors` 中添加特性 | 718 | ✅ |
+
+### 17.8 结论
+
+1. **功能完成**：
+   - 所有生成的 DTO 类的默认构造函数都包含 `[JsonConstructor]` 特性
+   - JSON 序列化器可以明确知道使用哪个构造函数
+
+2. **代码质量**：
+   - 修改简洁，只涉及 3 处代码
+   - 使用 CodeDOM API 正确添加特性
+   - 保持了代码的可读性和可维护性
+
+3. **兼容性**：
+   - 不影响现有的构造函数逻辑
+   - 向后兼容，不会破坏现有代码
+
+---
+
+**项目状态**：✅ **已完成并全面验证**（所有测试通过，DTO构造函数特性已添加）
+**最后更新**：2024-10-24 16:30
 **维护者**：Bioyond Team
