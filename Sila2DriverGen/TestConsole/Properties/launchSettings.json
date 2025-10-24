@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Sila2DriverGen.TestConsole": {
+      "commandName": "Project",
+      "commandLineArgs": "--auto"
+    }
+  }
+}

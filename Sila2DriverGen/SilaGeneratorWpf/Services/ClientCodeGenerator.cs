@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using Tecan.Sila2;
 using Tecan.Sila2.Generator;
 
@@ -21,6 +22,7 @@ namespace SilaGeneratorWpf.Services
     public class ClientCodeGenerator
     {
         private readonly bool _generateInterface;
+        private readonly GeneratedCodeDeduplicator _deduplicator;
 
         /// <summary>
         /// 构造函数
@@ -29,6 +31,7 @@ namespace SilaGeneratorWpf.Services
         public ClientCodeGenerator(bool generateInterface = true)
         {
             _generateInterface = generateInterface;
+            _deduplicator = new GeneratedCodeDeduplicator();
         }
 
         /// <summary>
@@ -86,6 +89,25 @@ namespace SilaGeneratorWpf.Services
 
                 result.GeneratedFiles = generatedFiles;
                 result.Message = $"成功生成 {generatedFiles.Count} 个文件";
+
+                // 复制必需的 DLL 到输出目录
+                CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+
+                // 去重处理：检查并注释重复的类型定义
+                progressCallback?.Invoke("检查重复的类型定义...");
+                var dedupResult = _deduplicator.DeduplicateGeneratedCode(outputDirectory, progressCallback);
+                if (dedupResult.Success && dedupResult.CommentedTypes.Count > 0)
+                {
+                    result.Warnings.Add($"已自动注释 {dedupResult.CommentedTypes.Count} 个重复的类型定义");
+                    foreach (var commented in dedupResult.CommentedTypes.Take(5)) // 只显示前5个
+                    {
+                        result.Warnings.Add($"  - {commented}");
+                    }
+                    if (dedupResult.CommentedTypes.Count > 5)
+                    {
+                        result.Warnings.Add($"  ... 还有 {dedupResult.CommentedTypes.Count - 5} 个");
+                    }
+                }
             }
             catch (Exception ex)
             {
@@ -153,6 +175,25 @@ namespace SilaGeneratorWpf.Services
 
                     result.GeneratedFiles = generatedFiles;
                     result.Message = $"成功生成 {generatedFiles.Count} 个文件";
+
+                    // 复制必需的 DLL 到输出目录
+                    CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+
+                    // 去重处理：检查并注释重复的类型定义
+                    progressCallback?.Invoke("检查重复的类型定义...");
+                    var dedupResult = _deduplicator.DeduplicateGeneratedCode(outputDirectory, progressCallback);
+                    if (dedupResult.Success && dedupResult.CommentedTypes.Count > 0)
+                    {
+                        result.Warnings.Add($"已自动注释 {dedupResult.CommentedTypes.Count} 个重复的类型定义");
+                        foreach (var commented in dedupResult.CommentedTypes.Take(5)) // 只显示前5个
+                        {
+                            result.Warnings.Add($"  - {commented}");
+                        }
+                        if (dedupResult.CommentedTypes.Count > 5)
+                        {
+                            result.Warnings.Add($"  ... 还有 {dedupResult.CommentedTypes.Count - 5} 个");
+                        }
+                    }
                 }
                 finally
                 {
@@ -260,6 +301,75 @@ namespace SilaGeneratorWpf.Services
             }
 
             return generatedFiles;
+        }
+
+        /// <summary>
+        /// 复制 Tecan.Sila2 必需的 DLL 到目标目录
+        /// 这些 DLL 是编译生成的客户端代码所必需的
+        /// </summary>
+        /// <param name="targetDirectory">目标目录</param>
+        /// <param name="progressCallback">进度回调</param>
+        private void CopyRequiredDllsToClientDirectory(string targetDirectory, Action<string>? progressCallback = null)
+        {
+            try
+            {
+                // 查找当前执行程序集所在目录（Generator.dll所在目录）
+                var currentDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                if (string.IsNullOrEmpty(currentDir))
+                {
+                    progressCallback?.Invoke("  ⚠ 警告: 无法确定 Generator.dll 所在目录");
+                    return;
+                }
+
+                // 必需的DLL列表
+                var requiredDlls = new[]
+                {
+                    "protobuf-net.dll",
+                    "protobuf-net.Core.dll",
+                    "Tecan.Sila2.dll",
+                    "Tecan.Sila2.Contracts.dll",
+                    "Tecan.Sila2.Annotations.dll",
+                    "Tecan.Sila2.DynamicClient.dll",  // 支持动态类型（AnyTypeDto等）
+                    "Grpc.Core.Api.dll",
+                    "Grpc.Core.dll",
+                    "Grpc.Net.Client.dll",
+                    "Grpc.Net.Common.dll"
+                };
+
+                progressCallback?.Invoke("  → 复制必需的 DLL 到客户端目录...");
+
+                int copiedCount = 0;
+                foreach (var dllName in requiredDlls)
+                {
+                    var sourcePath = Path.Combine(currentDir, dllName);
+                    if (File.Exists(sourcePath))
+                    {
+                        var destPath = Path.Combine(targetDirectory, dllName);
+                        try
+                        {
+                            File.Copy(sourcePath, destPath, overwrite: true);
+                            copiedCount++;
+                        }
+                        catch (Exception ex)
+                        {
+                            progressCallback?.Invoke($"  ⚠ 复制 {dllName} 失败: {ex.Message}");
+                        }
+                    }
+                }
+
+                if (copiedCount > 0)
+                {
+                    progressCallback?.Invoke($"  ✓ 已复制 {copiedCount} 个必需的 DLL");
+                }
+                else
+                {
+                    progressCallback?.Invoke("  ⚠ 警告: 未找到任何必需的 DLL");
+                }
+            }
+            catch (Exception ex)
+            {
+                progressCallback?.Invoke($"  ⚠ 复制 DLL 时出错: {ex.Message}");
+            }
         }
     }
 

@@ -41,6 +41,11 @@
     <ItemGroup>
         <ProjectReference Include="..\Generator\Generator.csproj" />
     </ItemGroup>
+    <ItemGroup>
+      <None Update="TemperatureController-v1_0.sila.xml">
+        <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      </None>
+    </ItemGroup>
     
     <!-- Generator 依赖项会自动复制到输出目录 -->
 </Project>
