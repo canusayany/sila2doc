@@ -61,6 +61,7 @@ namespace SilaGeneratorWpf.Services
                         progressCallback?.Invoke($"  从 Feature 对象生成: {request.Features.Count} 个特性");
                         clientCodePath = await GenerateClientCodeFromFeaturesAsync(
                             outputPath,
+                            namespaceName,
                             request.Features,
                             progressCallback);
                     }
@@ -91,6 +92,7 @@ namespace SilaGeneratorWpf.Services
                     progressCallback?.Invoke($"  从本地XML生成: {request.LocalFeatureXmlPaths.Count} 个文件");
                     clientCodePath = await GenerateClientCodeFromLocalXmlAsync(
                         outputPath,
+                        namespaceName,
                         request.LocalFeatureXmlPaths,
                         progressCallback);
 
@@ -183,31 +185,64 @@ namespace SilaGeneratorWpf.Services
                 _logger.LogInformation($"开始编译D3项目: {projectPath}");
                 progressCallback?.Invoke("========== 开始编译D3项目 ==========");
 
-                // 查找.csproj文件
-                var csprojFiles = Directory.GetFiles(projectPath, "*.csproj", SearchOption.TopDirectoryOnly);
+                // 优先编译.sln文件（包含主项目和测试项目）
+                var slnFiles = Directory.GetFiles(projectPath, "*.sln", SearchOption.TopDirectoryOnly);
+                if (slnFiles.Any())
+                {
+                    var slnFile = slnFiles.First();
+                    progressCallback?.Invoke($"  解决方案文件: {Path.GetFileName(slnFile)}");
+                    progressCallback?.Invoke("  执行 dotnet build...");
+                    
+                    var compileResult = await Task.Run(() => 
+                        _generatorService.CompileProject(
+                            slnFile,
+                            message => progressCallback?.Invoke($"    {message}")));
+
+                    if (compileResult.Success)
+                    {
+                        progressCallback?.Invoke("  ✓ 编译成功");
+                        progressCallback?.Invoke($"  DLL路径: {compileResult.DllPath}");
+                        progressCallback?.Invoke($"========== 编译完成 ==========");
+                    }
+                    else
+                    {
+                        progressCallback?.Invoke("  ✗ 编译失败");
+                        progressCallback?.Invoke($"========== 编译失败 ==========");
+                    }
+
+                    return compileResult;
+                }
+
+                // 备选：在子文件夹中查找.csproj文件
+                var csprojFiles = Directory.GetFiles(projectPath, "*.csproj", SearchOption.AllDirectories);
                 if (!csprojFiles.Any())
                 {
                     return new CompilationResult
                     {
                         Success = false,
-                        Message = "未找到.csproj文件"
+                        Message = "未找到.sln或.csproj文件"
                     };
                 }
 
-                var projectFile = csprojFiles.First();
-                progressCallback?.Invoke($"  项目文件: {Path.GetFileName(projectFile)}");
+                // 排除TestConsole项目，只编译主项目
+                var mainProjectFile = csprojFiles.FirstOrDefault(f => !f.Contains("TestConsole"));
+                if (mainProjectFile == null)
+                {
+                    mainProjectFile = csprojFiles.First();
+                }
 
-                // 编译
+                progressCallback?.Invoke($"  项目文件: {Path.GetFileName(mainProjectFile)}");
                 progressCallback?.Invoke("  执行 dotnet build...");
-                var compileResult = await Task.Run(() => 
+                
+                var result = await Task.Run(() => 
                     _generatorService.CompileProject(
-                        projectFile,
+                        mainProjectFile,
                         message => progressCallback?.Invoke($"    {message}")));
 
-                if (compileResult.Success)
+                if (result.Success)
                 {
                     progressCallback?.Invoke("  ✓ 编译成功");
-                    progressCallback?.Invoke($"  DLL路径: {compileResult.DllPath}");
+                    progressCallback?.Invoke($"  DLL路径: {result.DllPath}");
                     progressCallback?.Invoke($"========== 编译完成 ==========");
                 }
                 else
@@ -216,7 +251,7 @@ namespace SilaGeneratorWpf.Services
                     progressCallback?.Invoke($"========== 编译失败 ==========");
                 }
 
-                return compileResult;
+                return result;
             }
             catch (Exception ex)
             {
@@ -262,12 +297,15 @@ namespace SilaGeneratorWpf.Services
         /// </summary>
         private async Task<string?> GenerateClientCodeFromFeaturesAsync(
             string outputPath,
+            string namespaceName,
             Dictionary<string, Tecan.Sila2.Feature> features,
             Action<string>? progressCallback)
         {
             try
             {
-                var clientCodePath = Path.Combine(outputPath, "GeneratedClient");
+                // 直接生成到最终项目的Sila2Client文件夹，避免GeneratedClient临时文件夹
+                var projectDir = Path.Combine(outputPath, namespaceName);
+                var clientCodePath = Path.Combine(projectDir, "Sila2Client");
                 Directory.CreateDirectory(clientCodePath);
 
                 var result = await Task.Run(() => _codeGenerator.GenerateClientCodeFromFeatures(
@@ -297,12 +335,15 @@ namespace SilaGeneratorWpf.Services
         /// </summary>
         private async Task<string?> GenerateClientCodeFromLocalXmlAsync(
             string outputPath,
+            string namespaceName,
             List<string> xmlPaths,
             Action<string>? progressCallback)
         {
             try
             {
-                var clientCodePath = Path.Combine(outputPath, "GeneratedClient");
+                // 直接生成到最终项目的Sila2Client文件夹，避免GeneratedClient临时文件夹
+                var projectDir = Path.Combine(outputPath, namespaceName);
+                var clientCodePath = Path.Combine(projectDir, "Sila2Client");
                 Directory.CreateDirectory(clientCodePath);
 
                 var result = await Task.Run(() => _codeGenerator.GenerateClientCode(
@@ -372,10 +413,35 @@ namespace SilaGeneratorWpf.Services
 
                 // 1. 查找生成的客户端代码目录
                 progressCallback?.Invoke("[1/3] 查找客户端代码...");
-                var clientCodePath = Path.Combine(projectPath, "GeneratedClient");
-                if (!Directory.Exists(clientCodePath))
+                
+                // 尝试新的路径结构：ProjectName/Sila2Client
+                var projectDirs = Directory.GetDirectories(projectPath);
+                string? clientCodePath = null;
+                
+                foreach (var dir in projectDirs)
                 {
-                    return OrchestrationResult.Failure("未找到客户端代码目录");
+                    var sila2ClientPath = Path.Combine(dir, "Sila2Client");
+                    if (Directory.Exists(sila2ClientPath))
+                    {
+                        clientCodePath = sila2ClientPath;
+                        break;
+                    }
+                }
+                
+                // 兼容旧路径：GeneratedClient（已废弃）
+                if (clientCodePath == null)
+                {
+                    var legacyPath = Path.Combine(projectPath, "GeneratedClient");
+                    if (Directory.Exists(legacyPath))
+                    {
+                        clientCodePath = legacyPath;
+                        progressCallback?.Invoke("  ⚠ 使用旧版GeneratedClient路径（已废弃）");
+                    }
+                }
+                
+                if (clientCodePath == null)
+                {
+                    return OrchestrationResult.Failure("未找到客户端代码目录（Sila2Client）");
                 }
 
                 // 2. 重新分析客户端代码
@@ -464,6 +530,25 @@ namespace SilaGeneratorWpf.Services
                 var brand = brandModel.Length > 0 ? brandModel[0] : projectName;
                 var model = brandModel.Length > 1 ? brandModel[1] : "Unknown";
 
+                // 查找实际的ClientCodePath
+                string? actualClientCodePath = null;
+                var projectDirs = Directory.GetDirectories(projectPath);
+                foreach (var dir in projectDirs)
+                {
+                    var sila2ClientPath = Path.Combine(dir, "Sila2Client");
+                    if (Directory.Exists(sila2ClientPath))
+                    {
+                        actualClientCodePath = sila2ClientPath;
+                        break;
+                    }
+                }
+                
+                // 兼容旧路径
+                if (actualClientCodePath == null)
+                {
+                    actualClientCodePath = Path.Combine(projectPath, "GeneratedClient");
+                }
+                
                 return new D3DriverGenerationConfig
                 {
                     Brand = brand,
@@ -472,7 +557,7 @@ namespace SilaGeneratorWpf.Services
                     Developer = "Bioyond",
                     Namespace = namespaceName,
                     OutputPath = projectPath,
-                    ClientCodePath = Path.Combine(projectPath, "GeneratedClient"),
+                    ClientCodePath = actualClientCodePath,
                     Features = features
                 };
             }

@@ -36,9 +36,8 @@ namespace SilaGeneratorWpf.Services
                 progressCallback?.Invoke("创建输出目录结构...");
                 CreateOutputDirectories(config);
 
-                // 2. 复制客户端代码文件
-                progressCallback?.Invoke("复制客户端代码文件...");
-                CopyClientCode(config);
+                // 2. 客户端代码已在OrchestrationService中直接生成到Sila2Client文件夹，无需再复制
+                // （注：旧版本的GeneratedClient临时文件夹已废弃）
 
                 // 3. 生成 AllSila2Client.cs
                 progressCallback?.Invoke("生成 AllSila2Client.cs...");
@@ -111,25 +110,15 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 复制客户端代码文件
+        /// 复制客户端代码文件（已废弃 - 客户端代码现在直接生成到Sila2Client文件夹）
         /// </summary>
+        [Obsolete("客户端代码现在直接生成到Sila2Client文件夹，不再需要复制步骤")]
         private void CopyClientCode(D3DriverGenerationConfig config)
         {
-            _logger.LogInformation("复制客户端代码文件");
-
-            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
-            var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
-            var sourceFiles = Directory.GetFiles(config.ClientCodePath, "*.cs", SearchOption.TopDirectoryOnly);
-
-            foreach (var sourceFile in sourceFiles)
-            {
-                var fileName = Path.GetFileName(sourceFile);
-                var destFile = Path.Combine(clientCodeDir, fileName);
-                File.Copy(sourceFile, destFile, overwrite: true);
-                _logger.LogDebug($"复制文件: {fileName}");
-            }
-
-            _logger.LogInformation($"复制了 {sourceFiles.Length} 个客户端代码文件");
+            // 注：此方法已废弃，保留仅用于向后兼容
+            // 新版本在D3DriverOrchestrationService中直接生成到Sila2Client文件夹
+            
+            _logger.LogInformation("跳过客户端代码复制（代码已直接生成到目标位置）");
         }
 
         /// <summary>

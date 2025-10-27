@@ -14,6 +14,55 @@ namespace Sila2DriverGen.TestConsole
             
             ConsoleHelper.PrintHeader();
 
+            // 检查是否使用文件结构测试模式
+            if (args.Length > 0 && args[0].ToLower() == "--filestructure")
+            {
+                Console.WriteLine("运行文件结构测试...");
+                Console.WriteLine();
+                
+                var fileStructureTest = new FileStructureTest();
+                var success = await fileStructureTest.Test_FileStructureAsync();
+                
+                Console.WriteLine();
+                Console.WriteLine($"文件结构测试结果: {(success ? "✓ 通过" : "✗ 失败")}");
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+            
+            // 检查是否验证UI生成
+            if (args.Length > 0 && args[0].ToLower() == "--verifyui")
+            {
+                Console.WriteLine("验证最新的UI生成项目...");
+                Console.WriteLine();
+                
+                var uiTest = new UIGenerationTest();
+                var success = uiTest.Test_VerifyLatestGeneration();
+                
+                Console.WriteLine();
+                Console.WriteLine($"验证结果: {(success ? "✓ 通过" : "✗ 失败")}");
+                
+                if (!success)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("可能的原因：");
+                    Console.WriteLine("  1. 项目是在代码修改前生成的");
+                    Console.WriteLine("  2. WPF应用未重启，仍在使用旧代码");
+                    Console.WriteLine();
+                    Console.WriteLine("请重启WPF应用后重新生成项目");
+                }
+                
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+            
+            // 显示UI测试说明
+            if (args.Length > 0 && args[0].ToLower() == "--uihelp")
+            {
+                var uiTest = new UIGenerationTest();
+                uiTest.Test_UIGeneration_Instructions();
+                return;
+            }
+            
             // 检查是否使用自动化测试模式
             if (args.Length > 0 && args[0].ToLower() == "--auto")
             {

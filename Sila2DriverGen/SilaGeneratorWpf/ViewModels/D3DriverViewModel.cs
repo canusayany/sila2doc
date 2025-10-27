@@ -388,7 +388,7 @@ namespace SilaGeneratorWpf.ViewModels
                 {
                     AppendProcessLog("从在线服务器生成客户端代码...");
                     UpdateStatus("正在生成客户端代码...", StatusType.Info);
-                    clientCodePath = await GenerateClientCodeFromOnlineServer(outputPath, selectedFeatures!);
+                    clientCodePath = await GenerateClientCodeFromOnlineServer(outputPath, namespaceName, selectedFeatures!);
                     if (clientCodePath == null)
                     {
                         AppendProcessLog("❌ 客户端代码生成失败");
@@ -519,11 +519,14 @@ namespace SilaGeneratorWpf.ViewModels
         /// </summary>
         private async Task<string?> GenerateClientCodeFromOnlineServer(
             string outputPath,
+            string namespaceName,
             List<FeatureInfoViewModel> selectedFeatures)
         {
             try
             {
-                var clientCodeDir = Path.Combine(outputPath, "GeneratedClient");
+                // 创建项目目录和Sila2Client文件夹
+                var projectDir = Path.Combine(outputPath, namespaceName);
+                var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
                 Directory.CreateDirectory(clientCodeDir);
 
                 // 获取第一个特性的父服务器
@@ -729,21 +732,46 @@ namespace SilaGeneratorWpf.ViewModels
                     }
                 }
 
-                // 复制生成的接口、Client、DTOs文件
-                AppendProcessLog("复制Tecan Generator生成的文件...");
-                var generatedDir = Path.Combine(CurrentProjectPath, "GeneratedClient");
-                if (Directory.Exists(generatedDir))
+                // 复制生成的客户端代码文件
+                AppendProcessLog("复制Sila2客户端代码...");
+                
+                // 尝试新路径：ProjectName/Sila2Client
+                string? sourceClientDir = null;
+                var projectDirs = Directory.GetDirectories(CurrentProjectPath);
+                foreach (var dir in projectDirs)
                 {
-                    var targetGeneratedDir = Path.Combine(targetProjectDir!, "GeneratedClient");
-                    if (!Directory.Exists(targetGeneratedDir))
+                    var sila2ClientPath = Path.Combine(dir, "Sila2Client");
+                    if (Directory.Exists(sila2ClientPath))
                     {
-                        Directory.CreateDirectory(targetGeneratedDir);
+                        sourceClientDir = sila2ClientPath;
+                        break;
+                    }
+                }
+                
+                // 兼容旧路径：GeneratedClient
+                if (sourceClientDir == null)
+                {
+                    var legacyPath = Path.Combine(CurrentProjectPath, "GeneratedClient");
+                    if (Directory.Exists(legacyPath))
+                    {
+                        sourceClientDir = legacyPath;
+                        AppendProcessLog("  使用旧版GeneratedClient路径");
+                    }
+                }
+                
+                if (sourceClientDir != null && Directory.Exists(sourceClientDir))
+                {
+                    // 目标也应该是Sila2Client（新结构）
+                    var targetClientDir = Path.Combine(targetProjectDir!, "Sila2Client");
+                    if (!Directory.Exists(targetClientDir))
+                    {
+                        Directory.CreateDirectory(targetClientDir);
                     }
 
-                    foreach (var file in Directory.GetFiles(generatedDir, "*.cs", SearchOption.AllDirectories))
+                    foreach (var file in Directory.GetFiles(sourceClientDir, "*.cs", SearchOption.AllDirectories))
                     {
-                        var relativePath = Path.GetRelativePath(generatedDir, file);
-                        var targetFile = Path.Combine(targetGeneratedDir, relativePath);
+                        var relativePath = Path.GetRelativePath(sourceClientDir, file);
+                        var targetFile = Path.Combine(targetClientDir, relativePath);
                         var targetSubDir = Path.GetDirectoryName(targetFile);
                         if (!Directory.Exists(targetSubDir))
                         {

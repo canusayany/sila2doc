@@ -90,8 +90,9 @@ namespace SilaGeneratorWpf.Services
                 result.GeneratedFiles = generatedFiles;
                 result.Message = $"成功生成 {generatedFiles.Count} 个文件";
 
-                // 复制必需的 DLL 到输出目录
-                CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+                // 注：不再复制DLL到Sila2Client文件夹
+                // 这些依赖由项目的NuGet包引用提供（.csproj中的PackageReference）
+                // CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
 
                 // 去重处理：检查并注释重复的类型定义
                 progressCallback?.Invoke("检查重复的类型定义...");
@@ -176,8 +177,9 @@ namespace SilaGeneratorWpf.Services
                     result.GeneratedFiles = generatedFiles;
                     result.Message = $"成功生成 {generatedFiles.Count} 个文件";
 
-                    // 复制必需的 DLL 到输出目录
-                    CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+                    // 注：不再复制DLL到Sila2Client文件夹
+                    // 这些依赖由项目的NuGet包引用提供（.csproj中的PackageReference）
+                    // CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
 
                     // 去重处理：检查并注释重复的类型定义
                     progressCallback?.Invoke("检查重复的类型定义...");
@@ -304,11 +306,12 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 复制 Tecan.Sila2 必需的 DLL 到目标目录
-        /// 这些 DLL 是编译生成的客户端代码所必需的
+        /// 复制 Tecan.Sila2 必需的 DLL 到目标目录（已废弃）
+        /// 注：这些依赖现在由项目的NuGet包引用提供，不需要手动复制到Sila2Client文件夹
         /// </summary>
         /// <param name="targetDirectory">目标目录</param>
         /// <param name="progressCallback">进度回调</param>
+        [Obsolete("不再需要复制DLL到Sila2Client文件夹，这些依赖由NuGet包引用提供")]
         private void CopyRequiredDllsToClientDirectory(string targetDirectory, Action<string>? progressCallback = null)
         {
             try

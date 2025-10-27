@@ -457,21 +457,26 @@ namespace SilaGeneratorWpf.Services
                     _logger.LogWarning(ex, "添加 System.ComponentModel 引用时出现警告");
                 }
 
-                // 尝试添加 Tecan.Sila2 相关的引用
+                // 尝试添加 Tecan.Sila2 相关的引用（从执行程序集目录，不从Sila2Client文件夹）
                 try
                 {
                     // 查找当前执行程序集所在目录（Generator.dll所在目录）
                     var currentDir = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
                     if (!string.IsNullOrEmpty(currentDir))
                     {
-                        // 必需的DLL列表
+                        // 必需的DLL列表（完整列表，包含所有编译时需要的依赖）
                         var requiredDlls = new[]
                         {
                             "protobuf-net.dll",
                             "protobuf-net.Core.dll",
                             "Tecan.Sila2.dll",
                             "Tecan.Sila2.Contracts.dll",
-                            "Tecan.Sila2.Annotations.dll"
+                            "Tecan.Sila2.Annotations.dll",
+                            "Tecan.Sila2.DynamicClient.dll",
+                            "Grpc.Core.Api.dll",
+                            "Grpc.Net.Client.dll",
+                            "Grpc.Net.Common.dll",
+                            "Newtonsoft.Json.dll"
                         };
 
                         foreach (var dllName in requiredDlls)
@@ -479,28 +484,20 @@ namespace SilaGeneratorWpf.Services
                             var requiredDllPath = Path.Combine(currentDir, dllName);
                             if (File.Exists(requiredDllPath))
                             {
-                                references.Add(MetadataReference.CreateFromFile(requiredDllPath));
-                                _logger.LogInformation($"添加引用: {dllName}");
+                                try
+                                {
+                                    references.Add(MetadataReference.CreateFromFile(requiredDllPath));
+                                    _logger.LogInformation($"添加引用: {dllName}");
+                                }
+                                catch (Exception dllEx)
+                                {
+                                    _logger.LogWarning(dllEx, $"无法加载 DLL: {dllName}");
+                                }
                             }
                             else
                             {
                                 _logger.LogWarning($"未找到必需的DLL: {dllName} at {requiredDllPath}");
                             }
-                        }
-                    }
-
-                    // 添加客户端代码目录下的 DLL 引用
-                    var dllFiles = Directory.GetFiles(basePath, "*.dll", SearchOption.TopDirectoryOnly);
-                    foreach (var dll in dllFiles)
-                    {
-                        try
-                        {
-                            references.Add(MetadataReference.CreateFromFile(dll));
-                            _logger.LogInformation($"添加客户端目录DLL引用: {Path.GetFileName(dll)}");
-                        }
-                        catch (Exception dllEx)
-                        {
-                            _logger.LogWarning(dllEx, $"无法加载 DLL: {Path.GetFileName(dll)}");
                         }
                     }
                 }
