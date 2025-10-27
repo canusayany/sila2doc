@@ -64,7 +64,11 @@ namespace SilaGeneratorWpf.Services
                 progressCallback?.Invoke("复制依赖库...");
                 CopyDependencyLibraries(config);
 
-                // 9. 生成解决方案文件
+                // 9. 生成测试控制台项目
+                progressCallback?.Invoke("生成测试控制台项目...");
+                GenerateTestConsoleProject(config);
+
+                // 10. 生成解决方案文件
                 progressCallback?.Invoke("生成解决方案文件...");
                 GenerateSolutionFile(config);
 
@@ -96,9 +100,14 @@ namespace SilaGeneratorWpf.Services
         {
             _logger.LogInformation($"创建输出目录: {config.OutputPath}");
 
+            // 创建根目录
             Directory.CreateDirectory(config.OutputPath);
-            Directory.CreateDirectory(Path.Combine(config.OutputPath, "Sila2Client"));
-            Directory.CreateDirectory(Path.Combine(config.OutputPath, "lib"));
+            
+            // 创建主项目目录
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            Directory.CreateDirectory(projectDir);
+            Directory.CreateDirectory(Path.Combine(projectDir, "Sila2Client"));
+            Directory.CreateDirectory(Path.Combine(projectDir, "lib"));
         }
 
         /// <summary>
@@ -108,7 +117,8 @@ namespace SilaGeneratorWpf.Services
         {
             _logger.LogInformation("复制客户端代码文件");
 
-            var clientCodeDir = Path.Combine(config.OutputPath, "Sila2Client");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
             var sourceFiles = Directory.GetFiles(config.ClientCodePath, "*.cs", SearchOption.TopDirectoryOnly);
 
             foreach (var sourceFile in sourceFiles)
@@ -130,7 +140,8 @@ namespace SilaGeneratorWpf.Services
             _logger.LogInformation("生成 AllSila2Client.cs");
 
             var generator = new AllSila2ClientGenerator();
-            var outputPath = Path.Combine(config.OutputPath, "AllSila2Client.cs");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var outputPath = Path.Combine(projectDir, "AllSila2Client.cs");
             generator.Generate(config.Features, outputPath, config.Namespace);
         }
 
@@ -142,7 +153,8 @@ namespace SilaGeneratorWpf.Services
             _logger.LogInformation("生成 Sila2Base.cs");
 
             var generator = new Sila2BaseGenerator();
-            var outputPath = Path.Combine(config.OutputPath, "Sila2Base.cs");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var outputPath = Path.Combine(projectDir, "Sila2Base.cs");
             generator.Generate(outputPath, config.Namespace, "Sila2Client");
         }
 
@@ -154,7 +166,8 @@ namespace SilaGeneratorWpf.Services
             _logger.LogInformation("生成 CommunicationPars.cs");
 
             var generator = new CommunicationParsGenerator();
-            var outputPath = Path.Combine(config.OutputPath, "CommunicationPars.cs");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var outputPath = Path.Combine(projectDir, "CommunicationPars.cs");
             generator.Generate(outputPath, config.Namespace);
         }
 
@@ -169,7 +182,8 @@ namespace SilaGeneratorWpf.Services
             var methods = CollectAllMethods(config.Features);
 
             var generator = new D3DriverGenerator();
-            var outputPath = Path.Combine(config.OutputPath, "D3Driver.cs");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var outputPath = Path.Combine(projectDir, "D3Driver.cs");
             generator.Generate(config, methods, outputPath);
         }
 
@@ -241,7 +255,8 @@ namespace SilaGeneratorWpf.Services
 
             // 项目名称与命名空间保持一致
             var projectName = config.Namespace;
-            var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var projectPath = Path.Combine(projectDir, $"{projectName}.csproj");
 
             var projectContent = $@"<Project Sdk=""Microsoft.NET.Sdk"">
 
@@ -254,10 +269,12 @@ namespace SilaGeneratorWpf.Services
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include=""Tecan.Sila2.Client.NetCore"" Version=""4.4.1"" />
-    <PackageReference Include=""Tecan.Sila2.Features.Locking.Client"" Version=""4.4.1"" />
-    <PackageReference Include=""Tecan.Sila2.DynamicClient"" Version=""4.4.1"" />
-    <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
+    <PackageReference Include=""Microsoft.Extensions.Logging.Abstractions"" Version=""9.0.10"" />
+	  <PackageReference Include=""Tecan.Sila2.Client.NetCore"" Version=""4.4.1"" />
+	  <PackageReference Include=""Tecan.Sila2.Features.Locking.Client"" Version=""4.4.1"" />
+	  <PackageReference Include=""Tecan.Sila2.DynamicClient"" Version=""4.4.1"" />
+	  <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
+	  <PackageReference Include=""Zeroconf"" Version=""3.7.16"" />
   </ItemGroup>
 
   <ItemGroup>
@@ -275,12 +292,6 @@ namespace SilaGeneratorWpf.Services
     </Reference>
   </ItemGroup>
 
-  <ItemGroup>
-    <Compile Remove=""GeneratedClient\**"" />
-    <EmbeddedResource Remove=""GeneratedClient\**"" />
-    <None Remove=""GeneratedClient\**"" />
-  </ItemGroup>
-
 </Project>
 ";
 
@@ -295,7 +306,8 @@ namespace SilaGeneratorWpf.Services
         {
             _logger.LogInformation("复制依赖库");
 
-            var libDir = Path.Combine(config.OutputPath, "lib");
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var libDir = Path.Combine(projectDir, "lib");
             
             // 首先尝试从reflib目录复制（推荐位置）
             var reflibDir = FindReflibDirectory();
@@ -453,8 +465,65 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 生成解决方案文件
+        /// 生成测试控制台项目
         /// </summary>
+        private void GenerateTestConsoleProject(D3DriverGenerationConfig config)
+        {
+            _logger.LogInformation("生成测试控制台项目");
+
+            // 测试项目名称：主项目名+.Test
+            var testProjectName = $"{config.Namespace}.Test";
+            var testProjectDir = Path.Combine(config.OutputPath, "TestConsole");
+            Directory.CreateDirectory(testProjectDir);
+
+            var testProjectPath = Path.Combine(testProjectDir, $"{testProjectName}.csproj");
+
+            // 生成测试项目的 .csproj 文件
+            var testProjectContent = $@"<Project Sdk=""Microsoft.NET.Sdk"">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include=""..\{config.Namespace}\{config.Namespace}.csproj"" />
+  </ItemGroup>
+
+</Project>
+";
+
+            File.WriteAllText(testProjectPath, testProjectContent);
+            _logger.LogInformation($"生成测试项目文件: {testProjectPath}");
+
+            // 生成 Program.cs
+            var programPath = Path.Combine(testProjectDir, "Program.cs");
+            var programContent = $@"using {config.Namespace};
+using System;
+
+namespace {testProjectName}
+{{
+    internal class Program
+    {{
+        static void Main(string[] args)
+        {{
+            Console.WriteLine(""测试控制台启动..."");
+
+            AllSila2Client allSila2Client = new AllSila2Client();
+            allSila2Client.Connect("""", 0);
+
+            Console.WriteLine(""测试完成，按任意键退出..."");
+            Console.ReadKey();
+        }}
+    }}
+}}
+";
+
+            File.WriteAllText(programPath, programContent);
+            _logger.LogInformation($"生成 Program.cs: {programPath}");
+        }
+
         private void GenerateSolutionFile(D3DriverGenerationConfig config)
         {
             _logger.LogInformation("生成解决方案文件");
@@ -464,10 +533,10 @@ namespace SilaGeneratorWpf.Services
             var solutionPath = Path.Combine(config.OutputPath, $"{solutionName}.sln");
 
             var driverProjectName = config.Namespace;
-            var driverProjectPath = $"{driverProjectName}.csproj";
+            var driverProjectPath = $"{driverProjectName}\\{driverProjectName}.csproj";
             var driverProjectGuid = Guid.NewGuid().ToString("B").ToUpperInvariant();
 
-            var testProjectName = $"{config.Brand}{config.Model}.TestConsole";
+            var testProjectName = $"{config.Namespace}.Test";
             var testProjectPath = $"TestConsole\\{testProjectName}.csproj";
             var testProjectGuid = Guid.NewGuid().ToString("B").ToUpperInvariant();
 
@@ -480,6 +549,11 @@ MinimumVisualStudioVersion = 10.0.40219.1
 
             // 添加驱动项目
             solutionContent += $@"Project(""{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}"") = ""{driverProjectName}"", ""{driverProjectPath}"", ""{driverProjectGuid}""
+EndProject
+";
+
+            // 添加测试控制台项目
+            solutionContent += $@"Project(""{{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}}"") = ""{testProjectName}"", ""{testProjectPath}"", ""{testProjectGuid}""
 EndProject
 ";
 
@@ -497,6 +571,13 @@ EndProject
 		{driverProjectGuid}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{driverProjectGuid}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{driverProjectGuid}.Release|Any CPU.Build.0 = Release|Any CPU
+";
+
+            // 测试项目配置
+            solutionContent += $@"		{testProjectGuid}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{testProjectGuid}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{testProjectGuid}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{testProjectGuid}.Release|Any CPU.Build.0 = Release|Any CPU
 ";
 
             solutionContent += @"	EndGlobalSection
@@ -565,8 +646,9 @@ EndGlobal
         {
             // 项目名称与命名空间保持一致
             var projectName = config.Namespace;
-            var projectPath = Path.Combine(config.OutputPath, $"{projectName}.csproj");
-            return CompileProjectInternal(projectPath, config.OutputPath, null);
+            var projectDir = Path.Combine(config.OutputPath, config.Namespace);
+            var projectPath = Path.Combine(projectDir, $"{projectName}.csproj");
+            return CompileProjectInternal(projectPath, projectDir, null);
         }
 
         /// <summary>

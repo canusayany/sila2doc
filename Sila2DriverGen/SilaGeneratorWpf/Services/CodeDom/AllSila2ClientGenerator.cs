@@ -106,11 +106,11 @@ namespace SilaGeneratorWpf.Services.CodeDom
         /// </summary>
         private void AddFields(CodeTypeDeclaration clientClass, List<ClientFeatureInfo> features)
         {
-            // 为每个特性添加客户端字段
+            // 为每个特性添加客户端字段（使用完整命名空间）
             foreach (var feature in features)
             {
                 var field = new CodeMemberField(
-                    feature.InterfaceName,
+                    "Sila2Client." + feature.InterfaceName,
                     ToCamelCase(feature.InterfaceName))
                 {
                     Attributes = MemberAttributes.Private
@@ -219,14 +219,14 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "executionManagerFactory"),
                     new CodeMethodInvokeExpression(null, "DiscoverFactories"))));
 
-            // 为每个特性创建客户端
+            // 为每个特性创建客户端（使用完整命名空间）
             foreach (var feature in features)
             {
                 var fieldName = ToCamelCase(feature.InterfaceName);
                 
-                // clientProvider.TryCreateClient<IFeature>(_server, out feature);
+                // clientProvider.TryCreateClient<Sila2Client.IFeature>(_server, out feature);
                 method.Statements.Add(new CodeSnippetStatement(
-                    $"            clientProvider.TryCreateClient<{feature.InterfaceName}>(_server, out {fieldName});"));
+                    $"            clientProvider.TryCreateClient<Sila2Client.{feature.InterfaceName}>(_server, out {fieldName});"));
             }
 
             // TODO: 添加连接状态事件处理

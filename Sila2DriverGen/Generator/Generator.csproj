@@ -14,18 +14,10 @@
         <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
         <LangVersion>latest</LangVersion>
     </PropertyGroup>
-
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-        <OutputPath>..\Build\Generator\</OutputPath>
-    </PropertyGroup>
-    <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-        <OutputPath>..\Build\Generator\</OutputPath>
-    </PropertyGroup>
-
     <PropertyGroup>
         <StartupObject />
         <ApplicationIcon />
-        <OutputType>Exe</OutputType>
+        <OutputType>Library</OutputType>
     </PropertyGroup>
 
     <PropertyGroup Condition="'$(Configuration)|$(TargetFramework)|$(Platform)'=='Release|net472|AnyCPU'">
