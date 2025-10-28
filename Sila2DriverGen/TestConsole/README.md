@@ -13,6 +13,27 @@ cd TestConsole
 dotnet run -- --auto
 ```
 
+### 运行性能测试
+
+```powershell
+cd TestConsole
+dotnet run -- --performance
+```
+
+### 运行日志系统测试
+
+```powershell
+cd TestConsole
+dotnet run -- --logging
+```
+
+### 运行代码清理验证测试
+
+```powershell
+cd TestConsole
+dotnet run -- --cleanup
+```
+
 ### 运行交互式测试
 
 ```powershell

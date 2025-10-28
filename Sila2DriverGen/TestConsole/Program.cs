@@ -95,6 +95,36 @@ namespace Sila2DriverGen.TestConsole
                 return;
             }
             
+            // 检查是否运行日志测试
+            if (args.Length > 0 && args[0].ToLower() == "--logging")
+            {
+                Console.WriteLine("运行日志系统测试...");
+                Console.WriteLine();
+                
+                var loggingTest = new LoggingTest();
+                var success = await loggingTest.Test_LoggingSystemAsync();
+                
+                Console.WriteLine();
+                Console.WriteLine($"日志测试结果: {(success ? "✓ 通过" : "✗ 失败")}");
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+            
+            // 检查是否运行代码清理测试
+            if (args.Length > 0 && args[0].ToLower() == "--cleanup")
+            {
+                Console.WriteLine("运行代码清理验证测试...");
+                Console.WriteLine();
+                
+                var cleanupTest = new CodeCleanupTest();
+                var success = await cleanupTest.Test_CodeCleanupAsync();
+                
+                Console.WriteLine();
+                Console.WriteLine($"代码清理测试结果: {(success ? "✓ 通过" : "✗ 失败")}");
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+            
             var runner = new TestRunner();
             await runner.RunAsync();
             

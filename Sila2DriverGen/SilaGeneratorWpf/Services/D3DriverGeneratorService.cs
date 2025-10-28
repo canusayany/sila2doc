@@ -110,18 +110,6 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 复制客户端代码文件（已废弃 - 客户端代码现在直接生成到Sila2Client文件夹）
-        /// </summary>
-        [Obsolete("客户端代码现在直接生成到Sila2Client文件夹，不再需要复制步骤")]
-        private void CopyClientCode(D3DriverGenerationConfig config)
-        {
-            // 注：此方法已废弃，保留仅用于向后兼容
-            // 新版本在D3DriverOrchestrationService中直接生成到Sila2Client文件夹
-            
-            _logger.LogInformation("跳过客户端代码复制（代码已直接生成到目标位置）");
-        }
-
-        /// <summary>
         /// 生成 AllSila2Client.cs
         /// </summary>
         private void GenerateAllSila2Client(D3DriverGenerationConfig config)

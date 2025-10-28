@@ -229,9 +229,6 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     $"            clientProvider.TryCreateClient<Sila2Client.{feature.InterfaceName}>(_server, out {fieldName});"));
             }
 
-            // TODO: 添加连接状态事件处理
-            // 这部分比较复杂，暂时简化
-
             // return true;
             method.Statements.Add(new CodeMethodReturnStatement(new CodePrimitiveExpression(true)));
 

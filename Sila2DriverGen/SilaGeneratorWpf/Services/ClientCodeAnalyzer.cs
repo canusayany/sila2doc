@@ -556,34 +556,34 @@ namespace SilaGeneratorWpf.Services
             }
         }
 
-        /// <summary>
-        /// 从本地XML文件分析特性
-        /// （阶段9.5：支持从本地.sila.xml文件分析）
-        /// </summary>
-        /// <param name="xmlFilePaths">XML文件路径列表</param>
-        /// <returns>分析结果</returns>
-        public ClientAnalysisResult AnalyzeFromFeatureXml(List<string> xmlFilePaths)
-        {
-            _logger.LogInformation($"开始从XML文件分析特性，共 {xmlFilePaths.Count} 个文件");
-            var result = new ClientAnalysisResult();
+        ///// <summary>
+        ///// 从本地XML文件分析特性
+        ///// （阶段9.5：支持从本地.sila.xml文件分析）
+        ///// </summary>
+        ///// <param name="xmlFilePaths">XML文件路径列表</param>
+        ///// <returns>分析结果</returns>
+        //public ClientAnalysisResult AnalyzeFromFeatureXml(List<string> xmlFilePaths)
+        //{
+        //    _logger.LogInformation($"开始从XML文件分析特性，共 {xmlFilePaths.Count} 个文件");
+        //    var result = new ClientAnalysisResult();
 
-            try
-            {
-                // TODO: 实现XML解析逻辑
-                // 1. 解析每个.sila.xml文件
-                // 2. 提取Feature定义
-                // 3. 转换为ClientFeatureInfo
-                // 4. 这需要使用Tecan的Feature序列化器
+        //    try
+        //    {
+        //        // TODO: 实现XML解析逻辑
+        //        // 1. 解析每个.sila.xml文件
+        //        // 2. 提取Feature定义
+        //        // 3. 转换为ClientFeatureInfo
+        //        // 4. 这需要使用Tecan的Feature序列化器
                 
-                _logger.LogWarning("从XML文件分析特性功能暂未完全实现");
-                throw new NotImplementedException("从XML文件分析特性功能将在后续版本中完善");
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "从XML文件分析特性失败");
-                throw;
-            }
-        }
+        //        _logger.LogWarning("从XML文件分析特性功能暂未完全实现");
+        //        throw new NotImplementedException("从XML文件分析特性功能将在后续版本中完善");
+        //    }
+        //    catch (Exception ex)
+        //    {
+        //        _logger.LogError(ex, "从XML文件分析特性失败");
+        //        throw;
+        //    }
+        //}
     }
 }
 

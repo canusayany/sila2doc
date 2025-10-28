@@ -102,32 +102,68 @@
                     <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
                         <Button
                             Margin="0,0,5,0"
-                            Padding="8,6"
-                            Background="#3498db"
+                            Padding="10,8"
+                            Background="#0078D4"
                             BorderThickness="0"
                             Command="{Binding ScanServersCommand}"
-                            Content="🔍 扫描服务器"
+                            Content="🔍 扫描"
                             Foreground="White"
-                            ToolTip="扫描网络中的SiLA2服务器" />
+                            FontWeight="Medium"
+                            ToolTip="扫描网络中的SiLA2服务器">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="#0078D4"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#106EBE"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
 
                         <Button
                             Margin="0,0,5,0"
-                            Padding="8,6"
-                            Background="#9b59b6"
+                            Padding="10,8"
+                            Background="#8764B8"
                             BorderThickness="0"
                             Command="{Binding AddLocalFeaturesCommand}"
-                            Content="📁 添加本地特性"
+                            Content="📁 添加"
                             Foreground="White"
-                            ToolTip="导入本地.sila.xml特性文件" />
+                            FontWeight="Medium"
+                            ToolTip="导入本地.sila.xml特性文件">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="#8764B8"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#744DA9"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                         
                         <Button
-                            Padding="8,6"
-                            Background="#16a085"
+                            Padding="10,8"
+                            Background="#107C10"
                             BorderThickness="0"
                             Command="{Binding ExportFeaturesCommand}"
-                            Content="📤 导出特性"
+                            Content="📤 导出"
                             Foreground="White"
-                            ToolTip="导出选中的特性文件到指定文件夹" />
+                            FontWeight="Medium"
+                            ToolTip="导出选中的特性文件到指定文件夹">
+                            <Button.Style>
+                                <Style TargetType="Button">
+                                    <Setter Property="Background" Value="#107C10"/>
+                                    <Style.Triggers>
+                                        <Trigger Property="IsMouseOver" Value="True">
+                                            <Setter Property="Background" Value="#0E6A0E"/>
+                                        </Trigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </Button.Style>
+                        </Button>
                     </StackPanel>
                 </StackPanel>
 
@@ -338,57 +374,118 @@
                 Orientation="Horizontal">
                 <Button
                     Margin="5"
-                    Padding="10,5"
-                    Background="#16a085"
+                    Padding="12,8"
+                    Background="#107C10"
                     BorderThickness="0"
                     Command="{Binding OpenProjectDirectoryCommand}"
-                    Content="🗂️ 打开项目目录"
+                    Content="🗂️ 项目目录"
                     Foreground="White"
-                    ToolTip="打开生成的项目目录" />
+                    FontWeight="Medium"
+                    ToolTip="打开生成的项目目录">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#107C10"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#0E6A0E"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <Button
                     Margin="5"
-                    Padding="10,5"
-                    Background="#8e44ad"
+                    Padding="12,8"
+                    Background="#8764B8"
                     BorderThickness="0"
                     Command="{Binding OpenDllDirectoryCommand}"
-                    Content="📦 打开DLL目录"
+                    Content="📦 DLL目录"
                     Foreground="White"
-                    ToolTip="打开编译输出的DLL目录" />
+                    FontWeight="Medium"
+                    ToolTip="打开编译输出的DLL目录">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#8764B8"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#744DA9"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <Button
                     Margin="5"
-                    Padding="10,5"
-                    Background="#27ae60"
+                    Padding="12,8"
+                    Background="#0078D4"
                     BorderThickness="0"
                     Command="{Binding GenerateD3ProjectCommand}"
-                    Content="✨ 生成D3项目"
+                    Content="✨ 生成项目"
                     Foreground="White"
                     FontWeight="Bold"
-                    ToolTip="生成客户端代码和D3驱动代码（不编译）" />
+                    ToolTip="生成客户端代码和D3驱动代码（不编译）">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#0078D4"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#106EBE"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <Button
                     Margin="5"
-                    Padding="10,5"
-                    Background="#2980b9"
+                    Padding="12,8"
+                    Background="#0078D4"
                     BorderThickness="0"
                     Command="{Binding CompileD3ProjectCommand}"
-                    Content="🔨 编译D3项目"
+                    Content="🔨 编译项目"
                     Foreground="White"
                     FontWeight="Bold"
                     IsEnabled="{Binding CanCompile}"
-                    ToolTip="编译已生成的项目（需要先生成）" />
+                    ToolTip="编译已生成的项目（需要先生成）">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#0078D4"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#106EBE"/>
+                                </Trigger>
+                                <Trigger Property="IsEnabled" Value="False">
+                                    <Setter Property="Background" Value="#CCCCCC"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
 
                 <Button
                     Margin="5"
-                    Padding="10,5"
-                    Background="#e67e22"
+                    Padding="12,8"
+                    Background="#CA5010"
                     BorderThickness="0"
                     Command="{Binding AdjustMethodAttributesCommand}"
-                    Content="🔧 调整方法特性"
+                    Content="🔧 调整特性"
                     Foreground="White"
+                    FontWeight="Medium"
                     Visibility="{Binding CanAdjustMethods, Converter={StaticResource BoolToVisibilityConverter}}"
-                    ToolTip="打开方法预览与特性调整窗口" />
+                    ToolTip="打开方法预览与特性调整窗口">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#CA5010"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#A74109"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </WrapPanel>
         </Grid>
     </Grid>

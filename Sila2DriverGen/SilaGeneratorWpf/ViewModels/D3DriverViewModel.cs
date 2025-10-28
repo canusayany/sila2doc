@@ -224,7 +224,6 @@ namespace SilaGeneratorWpf.ViewModels
                             if (existingNode.Files.Any(f => f.FilePath == filePath))
                                 continue;
 
-                            // TODO: 解析XML文件获取Identifier和DisplayName
                             var file = new LocalFeatureFileViewModel
                             {
                                 FileName = fileName,
@@ -1352,14 +1351,6 @@ namespace SilaGeneratorWpf.ViewModels
                 method.IsIncluded = previewData.IsIncluded;
                 method.IsOperations = previewData.IsOperations;
                 method.IsMaintenance = previewData.IsMaintenance;
-
-                // 保持向后兼容（已废弃的Category字段）
-#pragma warning disable CS0618
-                if (previewData.IsMaintenance)
-                    method.Category = MethodCategory.Maintenance;
-                else if (previewData.IsOperations)
-                    method.Category = MethodCategory.Operations;
-#pragma warning restore CS0618
             }
         }
 

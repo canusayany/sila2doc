@@ -34,12 +34,6 @@ namespace SilaGeneratorWpf.Models
         public string Description { get; set; } = string.Empty;
 
         /// <summary>
-        /// 方法分类（已弃用，保留用于向后兼容）
-        /// </summary>
-        [Obsolete("请使用 IsOperations 和 IsMaintenance 替代")]
-        public MethodCategory Category { get; set; } = MethodCategory.Operations;
-
-        /// <summary>
         /// 是否包含在D3Driver中（只有勾选此项的方法才会生成）
         /// </summary>
         public bool IsIncluded { get; set; } = true;
@@ -89,22 +83,5 @@ namespace SilaGeneratorWpf.Models
         /// </summary>
         public bool RequiresJsonReturn { get; set; }
     }
-
-    /// <summary>
-    /// 方法分类
-    /// </summary>
-    public enum MethodCategory
-    {
-        /// <summary>
-        /// 操作方法
-        /// </summary>
-        Operations,
-
-        /// <summary>
-        /// 维护方法
-        /// </summary>
-        Maintenance
-    }
 }
-
 
