@@ -59,30 +59,31 @@ namespace SilaGeneratorWpf.Services
                     Directory.CreateDirectory(outputDirectory);
                 }
 
-                progressCallback?.Invoke($"开始并行处理 {featureFilesList.Count} 个特性文件...");
+                progressCallback?.Invoke($"开始串行处理 {featureFilesList.Count} 个特性文件...");
+                progressCallback?.Invoke($"  ℹ️ 注意：使用串行模式以确保线程安全");
 
-                // 并行处理特性文件
-                var parallelOptions = new ParallelOptions
+                // 串行处理特性文件（避免多线程竞争条件）
+                // 原因：SilaGeneratorApi内部使用的MEF容器中，代码生成器使用共享实例
+                // CSharpCodeProvider也不是线程安全的
+                
+                int processedCount = 0;
+                foreach (var featureFile in featureFilesList)
                 {
-                    MaxDegreeOfParallelism = Environment.ProcessorCount
-                };
-
-                Parallel.ForEach(featureFilesList, parallelOptions, (featureFile) =>
-                {
+                    processedCount++;
                     try
                     {
-                        progressCallback?.Invoke($"[{Task.CurrentId}] 正在处理: {Path.GetFileName(featureFile)}");
+                        progressCallback?.Invoke($"  [{processedCount}/{featureFilesList.Count}] 正在处理: {Path.GetFileName(featureFile)}");
 
                         if (!File.Exists(featureFile))
                         {
                             warnings.Add($"文件不存在: {featureFile}");
-                            return;
+                            continue;
                         }
 
                         // 加载 Feature 以获取标识符
                         var feature = FeatureSerializer.Load(featureFile);
                         
-                        // 生成代码（线程安全）
+                        // 生成代码
                         var files = GenerateClientFromFile(
                             featureFile,
                             feature.Identifier,
@@ -95,15 +96,15 @@ namespace SilaGeneratorWpf.Services
                             generatedFiles.Add(file);
                         }
 
-                        progressCallback?.Invoke($"[{Task.CurrentId}] ✓ 完成: {feature.Identifier}");
+                        progressCallback?.Invoke($"  [{processedCount}/{featureFilesList.Count}] ✓ 完成: {feature.Identifier}");
                     }
                     catch (Exception ex)
                     {
                         var fileName = Path.GetFileName(featureFile);
                         warnings.Add($"处理 {fileName} 时出错: {ex.Message}");
-                        progressCallback?.Invoke($"[{Task.CurrentId}] ✗ 错误: {fileName} - {ex.Message}");
+                        progressCallback?.Invoke($"  [{processedCount}/{featureFilesList.Count}] ✗ 错误: {fileName} - {ex.Message}");
                     }
-                });
+                }
 
                 result.GeneratedFiles = generatedFiles.ToList();
                 result.Warnings = warnings.ToList();
@@ -169,46 +170,51 @@ namespace SilaGeneratorWpf.Services
 
                 try
                 {
-                    progressCallback?.Invoke($"开始并行处理 {features.Count} 个特性...");
+                progressCallback?.Invoke($"开始串行处理 {features.Count} 个特性...");
+                progressCallback?.Invoke($"  ℹ️ 注意：使用串行模式以确保线程安全（Generator使用MEF共享实例）");
 
-                    // 并行处理特性
-                    var parallelOptions = new ParallelOptions
+                // 串行处理特性（避免多线程竞争条件）
+                // 原因：SilaGeneratorApi内部使用的MEF容器中，InterfaceGenerator和DtoGenerator
+                // 使用[PartCreationPolicy(CreationPolicy.Shared)]标记为共享实例（单例）
+                // CSharpCodeProvider也不是线程安全的，并行处理会导致：
+                // 1. NullReferenceException in GenerateProperty
+                // 2. 生成的代码不完整或损坏
+                // 3. 特性数量不一致
+                
+                int processedCount = 0;
+                foreach (var kvp in features)
+                {
+                    var feature = kvp.Value;
+                    processedCount++;
+                    try
                     {
-                        MaxDegreeOfParallelism = Environment.ProcessorCount
-                    };
+                        progressCallback?.Invoke($"  [{processedCount}/{features.Count}] 正在处理: {feature.Identifier}");
 
-                    Parallel.ForEach(features, parallelOptions, (kvp) =>
+                        // 将 Feature 对象保存为临时 XML 文件
+                        var tempFeatureFile = Path.Combine(tempDir, $"{feature.Identifier}.sila.xml");
+                        FeatureSerializer.Save(feature, tempFeatureFile);
+
+                        // 生成代码
+                        var files = GenerateClientFromFile(
+                            tempFeatureFile,
+                            feature.Identifier,
+                            outputDirectory,
+                            customNamespace ?? "Sila2Client",
+                            progressCallback);
+
+                        foreach (var file in files)
+                        {
+                            generatedFiles.Add(file);
+                        }
+
+                        progressCallback?.Invoke($"  [{processedCount}/{features.Count}] ✓ 完成: {feature.Identifier}");
+                    }
+                    catch (Exception ex)
                     {
-                        var feature = kvp.Value;
-                        try
-                        {
-                            progressCallback?.Invoke($"[{Task.CurrentId}] 正在处理: {feature.Identifier}");
-
-                            // 将 Feature 对象保存为临时 XML 文件
-                            var tempFeatureFile = Path.Combine(tempDir, $"{feature.Identifier}.sila.xml");
-                            FeatureSerializer.Save(feature, tempFeatureFile);
-
-                            // 生成代码
-                            var files = GenerateClientFromFile(
-                                tempFeatureFile,
-                                feature.Identifier,
-                                outputDirectory,
-                                customNamespace ?? "Sila2Client",
-                                progressCallback);
-
-                            foreach (var file in files)
-                            {
-                                generatedFiles.Add(file);
-                            }
-
-                            progressCallback?.Invoke($"[{Task.CurrentId}] ✓ 完成: {feature.Identifier}");
-                        }
-                        catch (Exception ex)
-                        {
-                            warnings.Add($"处理 {feature.Identifier} 时出错: {ex.Message}");
-                            progressCallback?.Invoke($"[{Task.CurrentId}] ✗ 错误: {feature.Identifier} - {ex.Message}");
-                        }
-                    });
+                        warnings.Add($"处理 {feature.Identifier} 时出错: {ex.Message}");
+                        progressCallback?.Invoke($"  [{processedCount}/{features.Count}] ✗ 错误: {feature.Identifier} - {ex.Message}");
+                    }
+                }
 
                     result.GeneratedFiles = generatedFiles.ToList();
                     result.Warnings = warnings.ToList();

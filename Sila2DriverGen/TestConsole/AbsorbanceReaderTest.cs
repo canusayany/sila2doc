@@ -112,7 +112,7 @@ namespace Sila2DriverGen.TestConsole
                 Console.WriteLine("\n========== 步骤5：生成D3驱动代码 ==========");
                 var config = new D3DriverGenerationConfig
                 {
-                    Namespace = "BR.ECS.DeviceDrivers.TestDevice",
+                    Namespace = "BR.ECS.DeviceDriver.TestDevice",
                     Brand = "TestBrand",
                     Model = "TestModel",
                     DeviceType = "TestDevice",

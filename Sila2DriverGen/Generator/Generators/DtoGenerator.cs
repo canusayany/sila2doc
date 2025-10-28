@@ -179,7 +179,8 @@ namespace Tecan.Sila2.Generator.Generators
                 }
             };
             var declaration = GenerateDto( featureProperty.Identifier + "Response", propertyStructure, Encapsulate( spec?.Mapping, featureProperty.Identifier ), false, featureProperty.Identifier, structHandler );
-            declaration.WriteDocumentation( $"Data transfer object to encapsulate the response of the {featureProperty.DisplayName} property" );
+            var displayName = !string.IsNullOrWhiteSpace(featureProperty.DisplayName) ? featureProperty.DisplayName : featureProperty.Identifier;
+            declaration.WriteDocumentation( $"Data transfer object to encapsulate the response of the {displayName} property" );
             return declaration;
         }
 
@@ -215,7 +216,8 @@ namespace Tecan.Sila2.Generator.Generators
             }
             var declaration = GenerateDto( GetStructureName( NameProvider.GenerateCommandIntermediateType( featureCommand ) ), commandResponseStructure, mappings, featureCommand.IntermediateResponse != null && featureCommand.IntermediateResponse.Length > 1,
                 featureCommand.Identifier + ".Intermediate", structHandler );
-            declaration.WriteDocumentation( $"Data transfer object for the intermediate response of the {featureCommand.DisplayName} command" );
+            var displayName = !string.IsNullOrWhiteSpace(featureCommand.DisplayName) ? featureCommand.DisplayName : featureCommand.Identifier;
+            declaration.WriteDocumentation( $"Data transfer object for the intermediate response of the {displayName} command" );
             return declaration;
         }
 
@@ -233,7 +235,8 @@ namespace Tecan.Sila2.Generator.Generators
             };
             var declaration = GenerateDto( GetStructureName( NameProvider.GenerateCommandResponseType( featureCommand ) ), commandResponseStructure, spec?.Response, featureCommand.Response != null && featureCommand.Response.Length > 1,
                 featureCommand.Identifier, structHandler );
-            declaration.WriteDocumentation( $"Data transfer object for the response of the {featureCommand.DisplayName} command" );
+            var displayName = !string.IsNullOrWhiteSpace(featureCommand.DisplayName) ? featureCommand.DisplayName : featureCommand.Identifier;
+            declaration.WriteDocumentation( $"Data transfer object for the response of the {displayName} command" );
             return declaration;
         }
 
@@ -257,7 +260,8 @@ namespace Tecan.Sila2.Generator.Generators
             requestType.BaseTypes.Add( typeof( ISilaRequestObject ) );
             var commandIdentifierProperty = GenerateCommandIdentifierProperty( feature.GetFullyQualifiedIdentifier( featureCommand ) );
             requestType.Members.Add( commandIdentifierProperty );
-            requestType.WriteDocumentation( $"Data transfer object for the request of the {featureCommand.DisplayName} command" );
+            var displayName = !string.IsNullOrWhiteSpace(featureCommand.DisplayName) ? featureCommand.DisplayName : featureCommand.Identifier;
+            requestType.WriteDocumentation( $"Data transfer object for the request of the {displayName} command" );
 
             return requestType;
         }
@@ -314,7 +318,8 @@ namespace Tecan.Sila2.Generator.Generators
                 declaration = GenerateDto( CreateProperIdentifier( dataType.Identifier ), dataTypeStructure, null, true, dataType.Identifier, structHandler );
             }
 
-            declaration.WriteDocumentation( $"The data transfer object for {dataType.DisplayName}" );
+            var displayName = !string.IsNullOrWhiteSpace(dataType.DisplayName) ? dataType.DisplayName : dataType.Identifier;
+            declaration.WriteDocumentation( $"The data transfer object for {displayName}" );
             return declaration;
         }
 
@@ -479,7 +484,8 @@ namespace Tecan.Sila2.Generator.Generators
             var (validationMethod, errors) = GenerateGetValidationErrors();
             CompleteGetValidationErrors( validationMethod, errors );
             dto.Members.Add( validationMethod );
-            dto.WriteDocumentation( $"The data transfer object for the {dataType.DisplayName} enumeration" );
+            var displayName = !string.IsNullOrWhiteSpace(dataType.DisplayName) ? dataType.DisplayName : dataType.Identifier;
+            dto.WriteDocumentation( $"The data transfer object for the {displayName} enumeration" );
             return dto;
         }
 
@@ -763,7 +769,13 @@ namespace Tecan.Sila2.Generator.Generators
             {
                 property.Name += "_";
             }
-            property.WriteDocumentation( element.Description ?? $"The {element.DisplayName} property" );
+            // 确保描述不为null或空，避免生成注释时出现NullReferenceException
+            var description = !string.IsNullOrWhiteSpace(element.Description)
+                ? element.Description
+                : !string.IsNullOrWhiteSpace(element.DisplayName)
+                    ? $"The {element.DisplayName} property"
+                    : $"The {element.Identifier} property";
+            property.WriteDocumentation( description );
             AddAttribute( property.CustomAttributes, typeof( ProtoMemberAttribute ), index );
             dto.Members.Add( property );
             var field = new CodeMemberField

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -24,6 +25,12 @@ namespace SilaGeneratorWpf.Models
             {
                 foreach (var method in feature.Methods)
                 {
+                    // 过滤掉包含 Stream 或 Stream? 的方法
+                    if (HasStreamType(method))
+                    {
+                        continue;
+                    }
+
                     previewList.Add(new MethodPreviewData
                     {
                         FeatureName = feature.FeatureName,
@@ -36,6 +43,52 @@ namespace SilaGeneratorWpf.Models
             }
 
             return previewList;
+        }
+
+        /// <summary>
+        /// 检查方法是否包含 Stream 类型（参数或返回值）
+        /// </summary>
+        private bool HasStreamType(MethodGenerationInfo method)
+        {
+            // 检查返回值是否为 Stream 或 Stream?
+            if (IsStreamType(method.ReturnType))
+            {
+                return true;
+            }
+
+            // 检查参数是否包含 Stream 或 Stream?
+            foreach (var param in method.Parameters)
+            {
+                if (IsStreamType(param.Type))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// 检查类型是否为 Stream 或 Stream?
+        /// </summary>
+        private bool IsStreamType(System.Type type)
+        {
+            if (type == null)
+                return false;
+
+            // 检查是否为 Stream 类型
+            if (type.Name == "Stream" || type.FullName == "System.IO.Stream")
+                return true;
+
+            // 检查是否为 Nullable<Stream> (Stream?)
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                var underlyingType = Nullable.GetUnderlyingType(type);
+                if (underlyingType != null && (underlyingType.Name == "Stream" || underlyingType.FullName == "System.IO.Stream"))
+                    return true;
+            }
+
+            return false;
         }
 
         private string GetMethodTypeDisplay(MethodGenerationInfo method)

@@ -38,7 +38,7 @@ namespace SilaGeneratorWpf.Services
 
                 // 1. 生成命名空间和输出目录
                 progressCallback?.Invoke("[1/6] 生成命名空间和输出目录...");
-                var namespaceName = $"BR.ECS.DeviceDrivers.{request.DeviceType}.{request.Brand}_{request.Model}";
+                var namespaceName = $"BR.ECS.DeviceDriver.{request.DeviceType}.{request.Brand}_{request.Model}";
                 var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
                 var outputPath = Path.Combine(
                     Path.GetTempPath(),
@@ -520,10 +520,10 @@ namespace SilaGeneratorWpf.Services
 
                 var fileContent = File.ReadAllText(d3DriverFile);
                 var namespaceMatch = System.Text.RegularExpressions.Regex.Match(fileContent, @"namespace\s+([\w\.]+)");
-                var namespaceName = namespaceMatch.Success ? namespaceMatch.Groups[1].Value : $"BR.ECS.DeviceDrivers.Unknown.{projectName}";
+                var namespaceName = namespaceMatch.Success ? namespaceMatch.Groups[1].Value : $"BR.ECS.DeviceDriver.Unknown.{projectName}";
 
                 // 从命名空间推断DeviceType, Brand, Model
-                // 格式：BR.ECS.DeviceDrivers.{DeviceType}.{Brand}_{Model}
+                // 格式：BR.ECS.DeviceDriver.{DeviceType}.{Brand}_{Model}
                 var parts = namespaceName.Split('.');
                 var deviceType = parts.Length > 3 ? parts[3] : "Unknown";
                 var brandModel = parts.Length > 4 ? parts[4].Split('_') : new[] { projectName, "Unknown" };

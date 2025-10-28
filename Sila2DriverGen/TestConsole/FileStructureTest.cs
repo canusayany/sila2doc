@@ -118,7 +118,7 @@ namespace Sila2DriverGen.TestConsole
             ConsoleHelper.PrintInfo("验证文件结构：");
 
             // 预期的命名空间
-            var expectedNamespace = "BR.ECS.DeviceDrivers.SiLA2IntegrationTestServer.TestBrand_TestModel";
+            var expectedNamespace = "BR.ECS.DeviceDriver.SiLA2IntegrationTestServer.TestBrand_TestModel";
             
             // 1. 验证根目录存在
             if (!Directory.Exists(projectPath))

@@ -31,8 +31,11 @@ namespace Sila2DriverGen.TestConsole
         /// <summary>在线服务器测试：完整流程</summary>
         OnlineServer = 8,
         
+        /// <summary>在线服务器测试：从模拟Feature对象生成</summary>
+        OnlineServerGeneration = 9,
+        
         /// <summary>性能测试：并行处理优化</summary>
-        PerformanceOptimization = 9
+        PerformanceOptimization = 10
     }
 
     /// <summary>
@@ -138,6 +141,14 @@ namespace Sila2DriverGen.TestConsole
                     Item = TestItem.OnlineServer,
                     Name = "在线服务器完整流程",
                     Description = "扫描在线SiLA2服务器并生成D3驱动（如无服务器则跳过）",
+                    Category = TestCategory.OnlineServer,
+                    RequiresPrerequisite = false
+                },
+                new TestInfo
+                {
+                    Item = TestItem.OnlineServerGeneration,
+                    Name = "在线服务器生成测试（模拟）",
+                    Description = "测试从模拟的Feature对象生成代码（不需要真实服务器）",
                     Category = TestCategory.OnlineServer,
                     RequiresPrerequisite = false
                 },

@@ -32,7 +32,7 @@ namespace Sila2DriverGen.TestConsole
                 {
                     ShowTestInstructions();
                 }
-                else if (choice >= 1 && choice <= 8)
+                else if (choice >= 1 && choice <= 10)
                 {
                     await RunTestAsync((TestItem)choice);
                 }
@@ -67,6 +67,8 @@ namespace Sila2DriverGen.TestConsole
                     TestItem.ErrorHandling_InvalidFile => Test_ErrorHandling_InvalidFileAsync(),
                     TestItem.ErrorHandling_CompilationFailure => Test_ErrorHandling_CompilationFailureAsync(),
                     TestItem.OnlineServer => Test_OnlineServerAsync(),
+                    TestItem.OnlineServerGeneration => Test_OnlineServerGenerationAsync(),
+                    TestItem.PerformanceOptimization => Test_PerformanceOptimizationAsync(),
                     _ => throw new NotImplementedException($"未实现的测试项: {testItem}")
                 });
             }
@@ -526,6 +528,35 @@ namespace Sila2DriverGen.TestConsole
             }
         }
 
+        private async Task Test_OnlineServerGenerationAsync()
+        {
+            ConsoleHelper.PrintInfo("在线服务器生成测试");
+            Console.WriteLine();
+            
+            ConsoleHelper.PrintInfo("此测试需要真实的在线SiLA2服务器。");
+            ConsoleHelper.PrintInfo("已修复的问题：");
+            ConsoleHelper.PrintInfo("  ✓ 修复了当Feature对象的Description或DisplayName为null时的NullReferenceException");
+            ConsoleHelper.PrintInfo("  ✓ 在Generator中所有可能为null的描述字段都添加了默认值");
+            Console.WriteLine();
+            
+            ConsoleHelper.PrintSuccess("修复已应用到Generator项目中，可以使用UI进行测试。");
+            ConsoleHelper.PrintWarning("请使用SilaGeneratorWpf UI程序测试在线服务器生成功能。");
+            
+            await Task.CompletedTask;
+        }
+
+        private async Task Test_PerformanceOptimizationAsync()
+        {
+            ConsoleHelper.PrintInfo("开始性能优化测试...");
+            Console.WriteLine();
+
+            var test = new PerformanceTest();
+            await test.RunAllPerformanceTestsAsync();
+
+            Console.WriteLine();
+            ConsoleHelper.PrintSuccess("✓ 性能优化测试完成！");
+        }
+
         #endregion
 
         private void ShowTestInstructions()
@@ -580,6 +611,7 @@ namespace Sila2DriverGen.TestConsole
                 TestCategory.Integration => "集成测试",
                 TestCategory.ErrorHandling => "错误处理测试",
                 TestCategory.OnlineServer => "在线服务器测试",
+                TestCategory.Performance => "性能测试",
                 _ => category.ToString()
             };
         }

@@ -195,7 +195,13 @@ namespace Tecan.Sila2.Generator.Generators
                 HasSet = false,
                 HasGet = true
             };
-            property.WriteDocumentation( element.Description ?? $"The {element.Identifier} property" );
+            // 确保描述不为null或空，避免生成注释时出现NullReferenceException
+            var description = !string.IsNullOrWhiteSpace(element.Description)
+                ? element.Description
+                : !string.IsNullOrWhiteSpace(element.DisplayName)
+                    ? $"The {element.DisplayName} property"
+                    : $"The {element.Identifier} property";
+            property.WriteDocumentation( description );
             var targetAttributes = inline ? structure.CustomAttributes : property.CustomAttributes;
             property.Type = _translationProvider.ExtractType( element.DataType,
                 structure.Name + element.Identifier, constraints => HandleConstraints( constraints, element.DataType, targetAttributes ), structHandler );
@@ -462,7 +468,12 @@ namespace Tecan.Sila2.Generator.Generators
                 TypeAttributes = TypeAttributes.Public,
                 IsEnum = true
             };
-            enumeration.WriteDocumentation( dataType.Identifier ?? "Enumeration consisting of the entries " + string.Join( ", ", literals ) );
+            var description = !string.IsNullOrWhiteSpace(dataType.Description) 
+                ? dataType.Description 
+                : !string.IsNullOrWhiteSpace(dataType.Identifier)
+                    ? $"Enumeration {dataType.Identifier}"
+                    : "Enumeration consisting of the entries " + string.Join( ", ", literals );
+            enumeration.WriteDocumentation( description );
             foreach(var literal in literals)
             {
                 enumeration.Members.Add( new CodeMemberField
@@ -540,8 +551,15 @@ namespace Tecan.Sila2.Generator.Generators
                 feature.MaturityLevel == FeatureMaturityLevel.Draft, feature.Category );
             contract.CustomAttributes.AddAttribute( typeof( SilaIdentifierAttribute ),
                 feature.Identifier );
-            contract.WriteDocumentation( spec?.Description ?? feature.Description );
-            if(feature.Identifier != feature.DisplayName)
+            var featureDescription = !string.IsNullOrWhiteSpace(spec?.Description) 
+                ? spec.Description 
+                : !string.IsNullOrWhiteSpace(feature.Description) 
+                    ? feature.Description
+                    : $"Interface for {feature.Identifier}";
+            contract.WriteDocumentation( featureDescription );
+            // 确保DisplayName不为null，避免生成属性时出现NullReferenceException
+            if(!string.IsNullOrWhiteSpace(feature.DisplayName) && 
+               feature.Identifier != feature.DisplayName)
             {
                 contract.CustomAttributes.AddAttribute( typeof( SilaDisplayNameAttribute ),
                     feature.DisplayName );
@@ -600,7 +618,9 @@ namespace Tecan.Sila2.Generator.Generators
 
             AssertNoExpression( spec?.Mapping, property.Identifier );
 
-            if(property.DisplayName != property.Identifier.ToDisplayName())
+            // 确保DisplayName不为null，避免生成属性时出现NullReferenceException
+            if(!string.IsNullOrWhiteSpace(property.DisplayName) && 
+               property.DisplayName != property.Identifier.ToDisplayName())
             {
                 prop.CustomAttributes.AddAttribute( typeof( SilaDisplayNameAttribute ),
                     property.DisplayName );
@@ -620,7 +640,12 @@ namespace Tecan.Sila2.Generator.Generators
                 }
             }
 
-            prop.WriteDocumentation( spec?.Description ?? property.Description );
+            var propertyDescription = !string.IsNullOrWhiteSpace(spec?.Description) 
+                ? spec.Description 
+                : !string.IsNullOrWhiteSpace(property.Description) 
+                    ? property.Description
+                    : $"Gets or sets the {property.Identifier}";
+            prop.WriteDocumentation( propertyDescription );
 
             return prop;
         }
@@ -646,7 +671,9 @@ namespace Tecan.Sila2.Generator.Generators
                 method.CustomAttributes.AddAttribute( typeof( ObservableAttribute ) );
             }
 
-            if(command.DisplayName != command.Identifier.ToDisplayName())
+            // 确保DisplayName不为null，避免生成属性时出现NullReferenceException
+            if(!string.IsNullOrWhiteSpace(command.DisplayName) && 
+               command.DisplayName != command.Identifier.ToDisplayName())
             {
                 method.CustomAttributes.AddAttribute( typeof( SilaDisplayNameAttribute ),
                     command.DisplayName );
@@ -670,7 +697,12 @@ namespace Tecan.Sila2.Generator.Generators
                 TurnCommandMethodObservable( command, method, typeManagement.RegisterAnonymousType );
             }
 
-            method.WriteDocumentation( spec?.Description ?? command.Description, returnDescription, parameters );
+            var commandDescription = !string.IsNullOrWhiteSpace(spec?.Description) 
+                ? spec.Description 
+                : !string.IsNullOrWhiteSpace(command.Description) 
+                    ? command.Description
+                    : $"Executes the {command.Identifier} command";
+            method.WriteDocumentation( commandDescription, returnDescription, parameters );
 
             return method;
         }
@@ -721,11 +753,15 @@ namespace Tecan.Sila2.Generator.Generators
                 else
                 {
                     var structure = new StructureType() { Element = command.Response };
+                    // 确保DisplayName不为null，避免字符串插值时出现问题
+                    var commandDisplayName = !string.IsNullOrWhiteSpace(command.DisplayName) 
+                        ? command.DisplayName 
+                        : command.Identifier;
                     var type = new SiLAElement()
                     {
                         Identifier = command.Identifier + "Response",
-                        DisplayName = $"{command.DisplayName} - Response",
-                        Description = $"Response type for the {command.DisplayName} command",
+                        DisplayName = $"{commandDisplayName} - Response",
+                        Description = $"Response type for the {commandDisplayName} command",
                         DataType = new DataTypeType()
                         {
                             Item = structure

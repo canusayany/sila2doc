@@ -547,7 +547,7 @@ namespace SilaGeneratorWpf.ViewModels
         {
             AppendProcessLog("▶ 生成项目信息...");
 
-            var namespaceName = $"BR.ECS.DeviceDrivers.{deviceInfo.DeviceType}.{deviceInfo.Brand}_{deviceInfo.Model}";
+            var namespaceName = $"BR.ECS.DeviceDriver.{deviceInfo.DeviceType}.{deviceInfo.Brand}_{deviceInfo.Model}";
             var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
             var outputPath = Path.Combine(
                 Path.GetTempPath(),

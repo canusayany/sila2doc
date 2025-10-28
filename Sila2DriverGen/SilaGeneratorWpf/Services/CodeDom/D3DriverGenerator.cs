@@ -117,6 +117,11 @@ namespace SilaGeneratorWpf.Services.CodeDom
             int maintenanceIndex = 1;
             foreach (var method in maintenanceMethods)
             {
+                // 跳过编号 100
+                if (maintenanceIndex == 100)
+                {
+                    maintenanceIndex++;
+                }
                 maintenanceIndexMap[method.Name] = maintenanceIndex++;
             }
 

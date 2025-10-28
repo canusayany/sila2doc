@@ -261,6 +261,13 @@ namespace SilaGeneratorWpf.Services
             if (type.IsEnum)
                 return true;
 
+            // Nullable<T> 类型，检查底层类型是否支持
+            if (type.IsGenericType && type.GetGenericTypeDefinition() == typeof(Nullable<>))
+            {
+                var underlyingType = Nullable.GetUnderlyingType(type);
+                return underlyingType != null && IsSupportedType(underlyingType);
+            }
+
             // 可观察命令（特殊处理）
             if (IsObservableCommand(type))
                 return true;
@@ -278,10 +285,13 @@ namespace SilaGeneratorWpf.Services
                 return IsSupportedType(elementType);
             }
 
-            // 简单类/结构（仅包含基础类型，不嵌套）
+            // 自定义类和结构不支持，必须转换为JSON string
+            // 即使内部都是基础类型也不行
             if (type.IsClass || type.IsValueType)
             {
-                return ValidateSimpleCompositeType(type);
+                // 检查是否为系统内置的值类型（如DateTime已经在supportedTypes中）
+                // 所有其他自定义类和结构都不支持
+                return false;
             }
 
             return false;
