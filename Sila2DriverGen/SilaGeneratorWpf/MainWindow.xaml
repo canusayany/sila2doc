@@ -25,14 +25,14 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!--  Title  -->
+        <!--  Title  --><!--
         <TextBlock
             Grid.Row="0"
             Margin="0,0,0,15"
             HorizontalAlignment="Center"
             FontSize="24"
             FontWeight="Bold"
-            Text="SiLA2 客户端代码生成器" />
+            Text="SiLA2 客户端代码生成器" />-->
 
         <!--  Tab Control  -->
         <TabControl Grid.Row="1">

@@ -182,8 +182,7 @@
                                     <CheckBox
                                         Margin="0,0,5,0"
                                         IsThreeState="True"
-                                        IsChecked="{Binding IsPartiallySelected}"
-                                        ToolTip="点击切换：未选→全选→未选，半选→未选">
+                                        IsChecked="{Binding IsPartiallySelected}">
                                         <i:Interaction.Behaviors>
                                             <behaviors:ThreeStateTreeViewBehavior />
                                         </i:Interaction.Behaviors>
