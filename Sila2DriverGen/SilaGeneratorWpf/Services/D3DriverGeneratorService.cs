@@ -241,17 +241,8 @@ namespace SilaGeneratorWpf.Services
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
- <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
+    <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
-
-  <ItemGroup>
-    <PackageReference Include=""Microsoft.Extensions.Logging.Abstractions"" Version=""9.0.10"" />
-	  <PackageReference Include=""Tecan.Sila2.Client.NetCore"" Version=""4.4.1"" />
-	  <PackageReference Include=""Tecan.Sila2.Features.Locking.Client"" Version=""4.4.1"" />
-	  <PackageReference Include=""Tecan.Sila2.DynamicClient"" Version=""4.4.1"" />
-	  <PackageReference Include=""Newtonsoft.Json"" Version=""13.0.3"" />
-	  <PackageReference Include=""Zeroconf"" Version=""3.7.16"" />
-  </ItemGroup>
 
   <ItemGroup>
     <Reference Include=""BR.ECS.Executor.Device.Domain.Contracts"">
@@ -265,6 +256,99 @@ namespace SilaGeneratorWpf.Services
     </Reference>
     <Reference Include=""BR.PC.Device.Sila2Discovery"">
       <HintPath>lib\BR.PC.Device.Sila2Discovery.dll</HintPath>
+    </Reference>
+    <Reference Include=""Common.Logging.Core"">
+      <HintPath>lib\Common.Logging.Core.dll</HintPath>
+    </Reference>
+    <Reference Include=""Common.Logging"">
+      <HintPath>lib\Common.Logging.dll</HintPath>
+    </Reference>
+    <Reference Include=""Grpc.Core.Api"">
+      <HintPath>lib\Grpc.Core.Api.dll</HintPath>
+    </Reference>
+    <Reference Include=""Grpc.Net.Client"">
+      <HintPath>lib\Grpc.Net.Client.dll</HintPath>
+    </Reference>
+    <Reference Include=""Grpc.Net.ClientFactory"">
+      <HintPath>lib\Grpc.Net.ClientFactory.dll</HintPath>
+    </Reference>
+    <Reference Include=""Grpc.Net.Common"">
+      <HintPath>lib\Grpc.Net.Common.dll</HintPath>
+    </Reference>
+    <Reference Include=""Makaretu.Dns"">
+      <HintPath>lib\Makaretu.Dns.dll</HintPath>
+    </Reference>
+    <Reference Include=""Makaretu.Dns.Multicast.New"">
+      <HintPath>lib\Makaretu.Dns.Multicast.New.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.DependencyInjection.Abstractions"">
+      <HintPath>lib\Microsoft.Extensions.DependencyInjection.Abstractions.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.DependencyInjection"">
+      <HintPath>lib\Microsoft.Extensions.DependencyInjection.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.Http"">
+      <HintPath>lib\Microsoft.Extensions.Http.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.Logging.Abstractions"">
+      <HintPath>lib\Microsoft.Extensions.Logging.Abstractions.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.Logging"">
+      <HintPath>lib\Microsoft.Extensions.Logging.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.Options"">
+      <HintPath>lib\Microsoft.Extensions.Options.dll</HintPath>
+    </Reference>
+    <Reference Include=""Microsoft.Extensions.Primitives"">
+      <HintPath>lib\Microsoft.Extensions.Primitives.dll</HintPath>
+    </Reference>
+    <Reference Include=""Newtonsoft.Json"">
+      <HintPath>lib\Newtonsoft.Json.dll</HintPath>
+    </Reference>
+    <Reference Include=""protobuf-net.Core"">
+      <HintPath>lib\protobuf-net.Core.dll</HintPath>
+    </Reference>
+    <Reference Include=""protobuf-net"">
+      <HintPath>lib\protobuf-net.dll</HintPath>
+    </Reference>
+    <Reference Include=""System.ComponentModel.Composition"">
+      <HintPath>lib\System.ComponentModel.Composition.dll</HintPath>
+    </Reference>
+    <Reference Include=""System.Diagnostics.DiagnosticSource"">
+      <HintPath>lib\System.Diagnostics.DiagnosticSource.dll</HintPath>
+    </Reference>
+    <Reference Include=""System.Reactive"">
+      <HintPath>lib\System.Reactive.dll</HintPath>
+    </Reference>
+    <Reference Include=""System.Security.Permissions"">
+      <HintPath>lib\System.Security.Permissions.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.Annotations"">
+      <HintPath>lib\Tecan.Sila2.Annotations.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.Cancellation.Client"">
+      <HintPath>lib\Tecan.Sila2.Cancellation.Client.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.Client"">
+      <HintPath>lib\Tecan.Sila2.Client.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.Contracts"">
+      <HintPath>lib\Tecan.Sila2.Contracts.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2"">
+      <HintPath>lib\Tecan.Sila2.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.DynamicClient"">
+      <HintPath>lib\Tecan.Sila2.DynamicClient.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.Locking.Client"">
+      <HintPath>lib\Tecan.Sila2.Locking.Client.dll</HintPath>
+    </Reference>
+    <Reference Include=""Tecan.Sila2.NetCore"">
+      <HintPath>lib\Tecan.Sila2.NetCore.dll</HintPath>
+    </Reference>
+    <Reference Include=""Zeroconf"">
+      <HintPath>lib\Zeroconf.dll</HintPath>
     </Reference>
   </ItemGroup>
 
@@ -306,61 +390,61 @@ namespace SilaGeneratorWpf.Services
                 }
             }
 
-            // 备用方案1：从示例项目的lib目录复制（相对于执行程序集）
-            var sampleLibDir = FindSampleLibDirectory();
+            //// 备用方案1：从示例项目的lib目录复制（相对于执行程序集）
+            //var sampleLibDir = FindSampleLibDirectory();
             
-            if (!string.IsNullOrEmpty(sampleLibDir) && Directory.Exists(sampleLibDir))
-            {
-                _logger.LogInformation($"从示例项目复制依赖库: {sampleLibDir}");
-                var dllFiles = Directory.GetFiles(sampleLibDir, "*.dll", SearchOption.TopDirectoryOnly);
+            //if (!string.IsNullOrEmpty(sampleLibDir) && Directory.Exists(sampleLibDir))
+            //{
+            //    _logger.LogInformation($"从示例项目复制依赖库: {sampleLibDir}");
+            //    var dllFiles = Directory.GetFiles(sampleLibDir, "*.dll", SearchOption.TopDirectoryOnly);
                 
-                // 去重复制（因为目录中可能有重复的DLL）
-                var copiedFiles = new HashSet<string>();
-                foreach (var dllFile in dllFiles)
-                {
-                    var fileName = Path.GetFileName(dllFile);
-                    if (!copiedFiles.Contains(fileName))
-                    {
-                        var destFile = Path.Combine(libDir, fileName);
-                        File.Copy(dllFile, destFile, overwrite: true);
-                        _logger.LogDebug($"复制库文件: {fileName}");
-                        copiedFiles.Add(fileName);
-                    }
-                }
-                _logger.LogInformation($"从示例项目复制了 {copiedFiles.Count} 个依赖库文件");
-                return;
-            }
+            //    // 去重复制（因为目录中可能有重复的DLL）
+            //    var copiedFiles = new HashSet<string>();
+            //    foreach (var dllFile in dllFiles)
+            //    {
+            //        var fileName = Path.GetFileName(dllFile);
+            //        if (!copiedFiles.Contains(fileName))
+            //        {
+            //            var destFile = Path.Combine(libDir, fileName);
+            //            File.Copy(dllFile, destFile, overwrite: true);
+            //            _logger.LogDebug($"复制库文件: {fileName}");
+            //            copiedFiles.Add(fileName);
+            //        }
+            //    }
+            //    _logger.LogInformation($"从示例项目复制了 {copiedFiles.Count} 个依赖库文件");
+            //    return;
+            //}
 
-            // 备用方案2：从当前目录向上查找
-            var currentDir = Directory.GetCurrentDirectory();
-            var searchDir = currentDir;
-            for (int i = 0; i < 5; i++)
-            {
-                var testPath = Path.Combine(searchDir, "BR.ECS.DeviceDriver.Sample.Test", "lib");
-                if (Directory.Exists(testPath))
-                {
-                    _logger.LogInformation($"从搜索目录复制依赖库: {testPath}");
-                    var dllFiles = Directory.GetFiles(testPath, "*.dll", SearchOption.TopDirectoryOnly);
+            //// 备用方案2：从当前目录向上查找
+            //var currentDir = Directory.GetCurrentDirectory();
+            //var searchDir = currentDir;
+            //for (int i = 0; i < 5; i++)
+            //{
+            //    var testPath = Path.Combine(searchDir, "BR.ECS.DeviceDriver.Sample.Test", "lib");
+            //    if (Directory.Exists(testPath))
+            //    {
+            //        _logger.LogInformation($"从搜索目录复制依赖库: {testPath}");
+            //        var dllFiles = Directory.GetFiles(testPath, "*.dll", SearchOption.TopDirectoryOnly);
                     
-                    var copiedFiles = new HashSet<string>();
-                    foreach (var dllFile in dllFiles)
-                    {
-                        var fileName = Path.GetFileName(dllFile);
-                        if (!copiedFiles.Contains(fileName))
-                        {
-                            var destFile = Path.Combine(libDir, fileName);
-                            File.Copy(dllFile, destFile, overwrite: true);
-                            _logger.LogDebug($"复制库文件: {fileName}");
-                            copiedFiles.Add(fileName);
-                        }
-                    }
-                    _logger.LogInformation($"从搜索目录复制了 {copiedFiles.Count} 个依赖库文件");
-                    return;
-                }
-                var parent = Directory.GetParent(searchDir);
-                if (parent == null) break;
-                searchDir = parent.FullName;
-            }
+            //        var copiedFiles = new HashSet<string>();
+            //        foreach (var dllFile in dllFiles)
+            //        {
+            //            var fileName = Path.GetFileName(dllFile);
+            //            if (!copiedFiles.Contains(fileName))
+            //            {
+            //                var destFile = Path.Combine(libDir, fileName);
+            //                File.Copy(dllFile, destFile, overwrite: true);
+            //                _logger.LogDebug($"复制库文件: {fileName}");
+            //                copiedFiles.Add(fileName);
+            //            }
+            //        }
+            //        _logger.LogInformation($"从搜索目录复制了 {copiedFiles.Count} 个依赖库文件");
+            //        return;
+            //    }
+            //    var parent = Directory.GetParent(searchDir);
+            //    if (parent == null) break;
+            //    searchDir = parent.FullName;
+            //}
 
             _logger.LogWarning($"未找到依赖库目录，请手动复制依赖库");
         }
