@@ -266,6 +266,7 @@
             Grid.ColumnSpan="2"
             Width="30"
             Height="120"
+            
             HorizontalAlignment="Left"
             VerticalAlignment="Center"
             Background="#F8F9FA"

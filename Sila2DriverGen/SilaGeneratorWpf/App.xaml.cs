@@ -4,6 +4,7 @@ using System.IO;
 using System.Windows.Threading;
 using SilaGeneratorWpf.Services;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.DependencyInjection;
 
 namespace SilaGeneratorWpf
 {
@@ -12,6 +13,8 @@ namespace SilaGeneratorWpf
     /// </summary>
     public partial class App : Application
     {
+        private IServiceProvider? _serviceProvider;
+
         public App()
         {
             // 捕获所有未处理的异常
@@ -23,20 +26,63 @@ namespace SilaGeneratorWpf
         {
             base.OnStartup(e);
             
-            // 初始化日志系统 (Debug模式下使用Debug级别,Release使用Information级别)
-#if DEBUG
-            LoggerService.Initialize(LogLevel.Debug);
-#else
-            LoggerService.Initialize(LogLevel.Information);
-#endif
+            // 配置依赖注入
+            var services = new ServiceCollection();
+            ConfigureServices(services);
+            _serviceProvider = services.BuildServiceProvider();
             
-            // 清理30天前的日志
-            LoggerService.CleanupOldLogs(30);
+            // 初始化服务定位器
+            ServiceLocator.Initialize(_serviceProvider);
+            
+            // 加载配置
+            var configService = _serviceProvider.GetRequiredService<ConfigurationService>();
+            var loggingConfig = configService.GetLoggingConfig();
+            
+            // 初始化日志系统
+            var logLevel = ParseLogLevel(loggingConfig.MinimumLevel);
+            LoggerService.Initialize(logLevel);
+            
+            var logger = LoggerService.GetLogger<App>();
+            logger.LogInformation("应用程序启动");
+            
+            // 清理过期日志
+            LoggerService.CleanupOldLogs(loggingConfig.RetainDays);
+        }
+
+        private void ConfigureServices(IServiceCollection services)
+        {
+            // 注册应用服务
+            services.AddApplicationServices();
+            
+            // 注册ViewModels
+            services.AddViewModels();
+        }
+
+        private LogLevel ParseLogLevel(string level)
+        {
+            return level?.ToLower() switch
+            {
+                "debug" => LogLevel.Debug,
+                "information" => LogLevel.Information,
+                "warning" => LogLevel.Warning,
+                "error" => LogLevel.Error,
+                "critical" => LogLevel.Critical,
+                _ => LogLevel.Information
+            };
         }
 
         protected override void OnExit(ExitEventArgs e)
         {
+            var logger = LoggerService.GetLogger<App>();
+            logger.LogInformation("应用程序退出");
+            
             LoggerService.Shutdown();
+            
+            if (_serviceProvider is IDisposable disposable)
+            {
+                disposable.Dispose();
+            }
+            
             base.OnExit(e);
         }
 

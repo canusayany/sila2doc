@@ -125,6 +125,27 @@ namespace Sila2DriverGen.TestConsole
                 return;
             }
             
+            // 检查是否运行依赖注入测试
+            if (args.Length > 0 && args[0].ToLower() == "--di")
+            {
+                DependencyInjectionTest.Run();
+                return;
+            }
+            
+            // 检查是否运行配置系统测试
+            if (args.Length > 0 && args[0].ToLower() == "--config")
+            {
+                ConfigurationTest.Run();
+                return;
+            }
+            
+            // 检查是否运行用户偏好测试
+            if (args.Length > 0 && args[0].ToLower() == "--prefs")
+            {
+                UserPreferencesTest.Run();
+                return;
+            }
+            
             var runner = new TestRunner();
             await runner.RunAsync();
             
