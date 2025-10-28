@@ -53,6 +53,9 @@
     
     <!-- 引用 reflib 中的依赖库 -->
     <ItemGroup>
+        <Reference Include="BR.ECS.Executor.Device.DriverPackager">
+          <HintPath>reflib\BR.ECS.Executor.Device.DriverPackager.dll</HintPath>
+        </Reference>
         <Reference Include="BR.PC.Device.Sila2Discovery">
             <HintPath>reflib\BR.PC.Device.Sila2Discovery.dll</HintPath>
         </Reference>
