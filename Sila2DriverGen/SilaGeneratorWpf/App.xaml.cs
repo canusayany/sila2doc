@@ -26,27 +26,37 @@ namespace SilaGeneratorWpf
         {
             base.OnStartup(e);
             
-            // 配置依赖注入
-            var services = new ServiceCollection();
-            ConfigureServices(services);
-            _serviceProvider = services.BuildServiceProvider();
-            
-            // 初始化服务定位器
-            ServiceLocator.Initialize(_serviceProvider);
-            
-            // 加载配置
-            var configService = _serviceProvider.GetRequiredService<ConfigurationService>();
-            var loggingConfig = configService.GetLoggingConfig();
-            
-            // 初始化日志系统
-            var logLevel = ParseLogLevel(loggingConfig.MinimumLevel);
-            LoggerService.Initialize(logLevel);
-            
-            var logger = LoggerService.GetLogger<App>();
-            logger.LogInformation("应用程序启动");
-            
-            // 清理过期日志
-            LoggerService.CleanupOldLogs(loggingConfig.RetainDays);
+            try
+            {
+                // 配置依赖注入
+                var services = new ServiceCollection();
+                ConfigureServices(services);
+                _serviceProvider = services.BuildServiceProvider();
+                
+                // 初始化服务定位器
+                ServiceLocator.Initialize(_serviceProvider);
+                
+                // 加载配置
+                var configService = _serviceProvider.GetRequiredService<ConfigurationService>();
+                var loggingConfig = configService.GetLoggingConfig();
+                
+                // 初始化日志系统
+                var logLevel = ParseLogLevel(loggingConfig.MinimumLevel);
+                LoggerService.Initialize(logLevel);
+                
+                var logger = LoggerService.GetLogger<App>();
+                logger.LogInformation("应用程序启动");
+                logger.LogInformation("日志文件位置: {LogPath}", LoggerService.GetLogsDirectory());
+                
+                // 清理过期日志
+                LoggerService.CleanupOldLogs(loggingConfig.RetainDays);
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"应用程序启动失败:\n{ex.Message}\n\n详细信息:\n{ex.StackTrace}", 
+                    "启动错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                Shutdown(1);
+            }
         }
 
         private void ConfigureServices(IServiceCollection services)

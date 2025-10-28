@@ -31,8 +31,11 @@ namespace SilaGeneratorWpf.Services
             {
                 var logsDir = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
                 Directory.CreateDirectory(logsDir);
+                Console.WriteLine($"日志目录: {logsDir}");
 
-                var logFilePath = Path.Combine(logsDir, "SilaGenerator_{Date:yyyyMMdd}.log");
+                // 使用正确的文件名模板（注意：这里不用占位符，Serilog会根据rollingInterval自动添加日期）
+                var logFilePath = Path.Combine(logsDir, "SilaGenerator.log");
+                Console.WriteLine($"日志文件路径: {logFilePath}");
 
                 var serilogLevel = ConvertToSerilogLevel(minimumLevel);
                 
@@ -46,19 +49,28 @@ namespace SilaGeneratorWpf.Services
                         retainedFileCountLimit: 30,
                         fileSizeLimitBytes: 1_073_741_824, // 1GB
                         rollOnFileSizeLimit: true,
-                        shared: true)
+                        shared: true,
+                        flushToDiskInterval: TimeSpan.FromSeconds(1))
                     .CreateLogger();
 
+                // 将 Serilog 与 Microsoft.Extensions.Logging 集成
                 _loggerFactory = LoggerFactory.Create(builder =>
-                    builder.AddSerilog(_serilogLogger));
+                {
+                    builder.ClearProviders();
+                    builder.AddSerilog(_serilogLogger, dispose: false);
+                });
                 
                 Log.Logger = _serilogLogger;
                 
-                _serilogLogger.Information("日志系统初始化成功 - 最小级别: {MinimumLevel}", minimumLevel);
+                _serilogLogger.Information("日志系统初始化成功 - 最小级别: {MinimumLevel}, 日志目录: {LogsDir}", minimumLevel, logsDir);
+                Console.WriteLine("日志系统初始化成功");
             }
             catch (Exception ex)
             {
-                System.Diagnostics.Debug.WriteLine($"日志系统初始化失败: {ex.Message}");
+                var errorMsg = $"日志系统初始化失败: {ex.Message}\n堆栈跟踪:\n{ex.StackTrace}";
+                System.Diagnostics.Debug.WriteLine(errorMsg);
+                Console.WriteLine(errorMsg);
+                throw; // 重新抛出异常，让调用者知道初始化失败
             }
         }
         

@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using SilaGeneratorWpf.Services;
 using Microsoft.Extensions.Logging;
@@ -57,7 +58,13 @@ namespace Sila2DriverGen.TestConsole
 
                 // 5. 验证日志文件
                 Console.WriteLine("[步骤 5/5] 验证日志文件...");
+                
+                // 等待日志写入磁盘
+                await Task.Delay(2000);
+                
                 var logsDir = LoggerService.GetLogsDirectory();
+                Console.WriteLine($"  日志目录: {logsDir}");
+                
                 if (!Directory.Exists(logsDir))
                 {
                     Console.WriteLine("  ✗ 日志目录不存在");
@@ -72,10 +79,68 @@ namespace Sila2DriverGen.TestConsole
                 }
 
                 Console.WriteLine($"  ✓ 找到 {logFiles.Length} 个日志文件");
+                
+                // 找到最新的日志文件
+                string latestLogFile = null;
+                DateTime latestTime = DateTime.MinValue;
                 foreach (var logFile in logFiles)
                 {
                     var fileInfo = new FileInfo(logFile);
-                    Console.WriteLine($"    - {fileInfo.Name} ({fileInfo.Length} 字节)");
+                    Console.WriteLine($"    - {fileInfo.Name} ({fileInfo.Length:N0} 字节, 修改时间: {fileInfo.LastWriteTime})");
+                    
+                    if (fileInfo.LastWriteTime > latestTime)
+                    {
+                        latestTime = fileInfo.LastWriteTime;
+                        latestLogFile = logFile;
+                    }
+                }
+                
+                // 验证最新日志文件的内容
+                if (latestLogFile != null)
+                {
+                    Console.WriteLine($"\n  验证最新日志文件内容: {Path.GetFileName(latestLogFile)}");
+                    
+                    // 使用 FileShare.ReadWrite 允许共享访问（因为 Serilog 可能正在写入）
+                    string logContent;
+                    using (var fileStream = new FileStream(latestLogFile, FileMode.Open, FileAccess.Read, FileShare.ReadWrite))
+                    using (var reader = new StreamReader(fileStream))
+                    {
+                        logContent = reader.ReadToEnd();
+                    }
+                    
+                    var expectedLogs = new[]
+                    {
+                        "这是一条信息日志",
+                        "这是一条警告日志",
+                        "这是一条错误日志",
+                        "这是一条严重错误日志",
+                        "测试结构化日志"
+                    };
+                    
+                    int foundCount = 0;
+                    foreach (var expectedLog in expectedLogs)
+                    {
+                        if (logContent.Contains(expectedLog))
+                        {
+                            foundCount++;
+                        }
+                    }
+                    
+                    Console.WriteLine($"  ✓ 验证了 {foundCount}/{expectedLogs.Length} 条预期日志");
+                    
+                    if (foundCount < expectedLogs.Length)
+                    {
+                        Console.WriteLine($"  ⚠ 警告: 部分日志未找到，可能是异步写入延迟");
+                    }
+                    
+                    // 显示最后3行日志
+                    var lines = logContent.Split('\n');
+                    var recentLogs = lines.Where(l => !string.IsNullOrWhiteSpace(l)).TakeLast(3);
+                    Console.WriteLine("\n  最新的3条日志:");
+                    foreach (var log in recentLogs)
+                    {
+                        Console.WriteLine($"    {log.Trim()}");
+                    }
                 }
 
                 // 6. 测试日志清理

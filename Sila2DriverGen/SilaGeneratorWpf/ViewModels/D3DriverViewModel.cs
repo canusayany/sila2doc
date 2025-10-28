@@ -1402,7 +1402,7 @@ namespace SilaGeneratorWpf.ViewModels
                 }
 
                 // 查找.csproj文件（项目名称与命名空间一致）
-                var projectFile = Path.Combine(CurrentProjectPath, $"{_currentConfig.Namespace}.csproj");
+                var projectFile = Path.Combine(CurrentProjectPath, _currentConfig.Namespace, $"{_currentConfig.Namespace}.csproj");
                 if (!File.Exists(projectFile))
                 {
                     AppendProcessLog($"错误：找不到项目文件 {projectFile}", isError: true);

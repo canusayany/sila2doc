@@ -241,7 +241,6 @@ namespace SilaGeneratorWpf.Services
     <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
-    <DocumentationFile>bin\$(Configuration)\$(TargetFramework)\{projectName}.xml</DocumentationFile>
  <AppendTargetFrameworkToOutputPath>false</AppendTargetFrameworkToOutputPath>
   </PropertyGroup>
 
