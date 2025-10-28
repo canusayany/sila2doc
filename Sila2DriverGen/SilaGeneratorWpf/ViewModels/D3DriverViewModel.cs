@@ -1,3 +1,8 @@
+using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using SilaGeneratorWpf.Models;
+using SilaGeneratorWpf.Services;
 using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
@@ -5,12 +10,6 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
-using CommunityToolkit.Mvvm.ComponentModel;
-using CommunityToolkit.Mvvm.Input;
-using Microsoft.Extensions.Logging;
-using SilaGeneratorWpf.Models;
-using SilaGeneratorWpf.Services;
-using Tecan.Sila2;
 
 namespace SilaGeneratorWpf.ViewModels
 {
@@ -117,9 +116,9 @@ namespace SilaGeneratorWpf.ViewModels
             _discoveryService = new ServerDiscoveryService();
             _codeGenerator = new ClientCodeGenerator();
             _persistenceService = new LocalFeaturePersistenceService();
-            
+
             _logger.LogInformation("D3驱动生成 ViewModel 初始化（重构版）");
-            
+
             // 加载持久化的本地特性
             LoadLocalFeatures();
         }
@@ -220,7 +219,7 @@ namespace SilaGeneratorWpf.ViewModels
                         foreach (var filePath in group)
                         {
                             var fileName = Path.GetFileName(filePath);
-                            
+
                             // 避免重复添加
                             if (existingNode.Files.Any(f => f.FilePath == filePath))
                                 continue;
@@ -276,7 +275,7 @@ namespace SilaGeneratorWpf.ViewModels
             {
                 LocalNodes.Remove(selectedNode);
                 _persistenceService.Save(LocalNodes);
-                
+
                 UpdateStatus($"已删除节点: {selectedNode.NodeName}", StatusType.Success);
                 _logger.LogInformation($"删除了本地节点: {selectedNode.NodeName}");
             }
@@ -311,202 +310,81 @@ namespace SilaGeneratorWpf.ViewModels
         #region 生成D3驱动
 
         /// <summary>
-        /// 生成D3项目（不编译）
+        /// 生成D3项目（不编译）- 主入口函数
         /// </summary>
         [RelayCommand(CanExecute = nameof(CanExecuteGenerate))]
         private async Task GenerateD3ProjectAsync()
         {
             ClearProcessLog();
-            AppendProcessLog("开始生成D3驱动...");
+            AppendProcessLog("========== 开始生成D3驱动 ==========");
             _logger.LogInformation("开始生成D3驱动");
 
-            // 验证选择
-            AppendProcessLog("验证特性选择...");
-            var (isValid, errorMessage, isOnline, selectedFeatures) = ValidateSelection();
-            if (!isValid)
-            {
-                AppendProcessLog($"验证失败: {errorMessage}", isError: true);
-                MessageBox.Show(errorMessage, "验证失败", MessageBoxButton.OK, MessageBoxImage.Warning);
-                return;
-            }
-
-            // 弹出设备信息输入对话框
-            AppendProcessLog("等待用户输入设备信息...");
-            var deviceInfoDialog = new Views.DeviceInfoDialog();
-            var deviceInfoViewModel = new DeviceInfoDialogViewModel();
-            
-            // 如果是在线服务器，尝试自动填充DeviceType
-            if (isOnline && selectedFeatures?.FirstOrDefault()?.ParentServer != null)
-            {
-                var parentServer = selectedFeatures.First().ParentServer;
-                deviceInfoViewModel.DeviceType = parentServer?.ServerType ?? "";
-            }
-            
-            deviceInfoDialog.DataContext = deviceInfoViewModel;
-            deviceInfoDialog.Owner = Application.Current.MainWindow;
-            
-            if (deviceInfoDialog.ShowDialog() != true)
-            {
-                AppendProcessLog("用户取消了设备信息输入");
-                return;
-            }
-            
-            var brand = deviceInfoViewModel.Brand;
-            var model = deviceInfoViewModel.Model;
-            var deviceType = deviceInfoViewModel.DeviceType;
-            var developer = deviceInfoViewModel.Developer;
-            
-            AppendProcessLog($"设备信息：{brand} {model} ({deviceType}) - 开发者：{developer}");
-
             IsGenerating = true;
-            UpdateStatus("正在生成D3驱动...", StatusType.Info);
 
             try
             {
-                // 生成命名空间和输出目录
-                AppendProcessLog("生成命名空间和输出目录...");
-                var namespaceName = $"BR.ECS.DeviceDrivers.{deviceType}.{brand}_{model}";
-                var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-                var outputPath = Path.Combine(
-                    Path.GetTempPath(),
-                    "Sila2D3Gen",
-                    $"{brand}_{model}_{timestamp}");
-
-                AppendProcessLog($"命名空间: {namespaceName}");
-                AppendProcessLog($"输出目录: {outputPath}");
-                _logger.LogInformation($"命名空间: {namespaceName}");
-                _logger.LogInformation($"输出目录: {outputPath}");
-
-                CurrentProjectPath = outputPath;
-
-                string? clientCodePath = null;
-                string? serverIp = null;
-                int? serverPort = null;
-
-                // 如果选择的是在线服务器，先生成客户端代码
-                if (isOnline)
+                // 步骤1：验证特性选择
+                var validationResult = ValidateAndGetSelection();
+                if (!validationResult.IsValid)
                 {
-                    AppendProcessLog("从在线服务器生成客户端代码...");
-                    UpdateStatus("正在生成客户端代码...", StatusType.Info);
-                    clientCodePath = await GenerateClientCodeFromOnlineServer(outputPath, namespaceName, selectedFeatures!);
-                    if (clientCodePath == null)
-                    {
-                        AppendProcessLog("❌ 客户端代码生成失败");
-                        UpdateStatus("客户端代码生成失败", StatusType.Error);
-                        return;
-                    }
-                    AppendProcessLog("✓ 客户端代码生成完成");
-
-                    // 获取服务器 IP 和 Port
-                    var parentServer = selectedFeatures?.FirstOrDefault()?.ParentServer;
-                    if (parentServer != null)
-                    {
-                        serverIp = parentServer.IPAddress;
-                        serverPort = parentServer.Port;
-                        AppendProcessLog($"服务器地址: {serverIp}:{serverPort}");
-                    }
-                }
-                else
-                {
-                    // TODO: 从本地XML文件生成客户端代码
-                    AppendProcessLog("❌ 暂不支持从本地特性文件生成");
-                    MessageBox.Show("暂不支持从本地特性文件生成（待实现阶段9.5）", "提示", 
-                        MessageBoxButton.OK, MessageBoxImage.Information);
+                    AppendProcessLog($"❌ 验证失败: {validationResult.ErrorMessage}", isError: true);
+                    MessageBox.Show(validationResult.ErrorMessage, "验证失败", MessageBoxButton.OK, MessageBoxImage.Warning);
                     return;
                 }
 
-                // 分析客户端代码
-                AppendProcessLog("分析客户端代码...");
-                UpdateStatus("正在分析客户端代码...", StatusType.Info);
-                var analyzer = new ClientCodeAnalyzer();
-                var analysisResult = analyzer.Analyze(clientCodePath);
-                _currentAnalysisResult = analysisResult;  // 保存分析结果
-                AppendProcessLog($"检测到 {analysisResult.Features.Count} 个特性");
+                // 步骤2：获取设备信息
+                var deviceInfo = GetDeviceInfoFromUser(validationResult.IsOnline, validationResult.SelectedFeatures);
+                if (deviceInfo == null)
+                {
+                    AppendProcessLog("用户取消了设备信息输入");
+                    return;
+                }
 
-                // 更新预览
-                var previewData = analysisResult.GetMethodPreviewData();
-                MethodPreviewData = new ObservableCollection<MethodPreviewData>(previewData);
+                // 步骤3：生成项目基本信息（命名空间、输出路径）
+                var projectInfo = GenerateProjectInfo(deviceInfo);
+                CurrentProjectPath = projectInfo.OutputPath;
 
-                // ⭐ 弹出方法预览窗口让用户调整方法特性
-                AppendProcessLog("等待用户调整方法特性...");
-                var methodPreviewResult = ShowMethodPreviewWindow();
-                if (!methodPreviewResult)
+                // 步骤4：生成客户端代码
+                var clientCodeResult = await GenerateClientCodeAsync(
+                    validationResult.IsOnline,
+                    validationResult.SelectedFeatures,
+                    projectInfo);
+
+                if (!clientCodeResult.Success)
+                {
+                    AppendProcessLog($"❌ 客户端代码生成失败: {clientCodeResult.ErrorMessage}", isError: true);
+                    UpdateStatus("客户端代码生成失败", StatusType.Error);
+                    return;
+                }
+
+                // 步骤5：分析客户端代码并获取方法信息
+                var analysisResult = AnalyzeClientCode(clientCodeResult.ClientCodePath);
+                if (analysisResult == null)
+                {
+                    return;
+                }
+
+                // 步骤6：显示方法预览窗口，让用户调整方法特性
+                if (!ShowMethodPreviewAndSync(analysisResult))
                 {
                     AppendProcessLog("用户取消了生成");
                     return;
                 }
 
-                // 同步方法分类信息
-                AppendProcessLog("同步方法分类信息...");
-                SyncMethodClassification(analysisResult.Features);
+                // 步骤7：生成D3驱动代码
+                await GenerateD3DriverCodeAsync(
+                    deviceInfo,
+                    projectInfo,
+                    clientCodeResult,
+                    analysisResult,
+                    validationResult);
 
-                // 生成D3驱动
-                AppendProcessLog("生成D3驱动代码...");
-                UpdateStatus("正在生成D3驱动代码...", StatusType.Info);
-                var config = new D3DriverGenerationConfig
-                {
-                    Brand = brand.Trim(),
-                    Model = model.Trim(),
-                    DeviceType = deviceType.Trim(),
-                    Developer = developer.Trim(),
-                    Namespace = namespaceName,
-                    OutputPath = outputPath,
-                    ClientCodePath = clientCodePath,
-                    Features = analysisResult.Features,
-                    IsOnlineSource = isOnline,
-                    ServerUuid = isOnline ? selectedFeatures?.FirstOrDefault()?.ParentServer?.Uuid.ToString() : null,
-                    LocalFeatureXmlPaths = isOnline ? null : selectedFeatures?.Select(f => f.Identifier).ToList(),
-                    ServerIp = serverIp,
-                    ServerPort = serverPort
-                };
-
-                _currentConfig = config;  // 保存配置用于后续操作
-
-                _generatorService = new D3DriverGeneratorService();
-                var result = await Task.Run(() => _generatorService.Generate(
-                    config,
-                    message => Application.Current.Dispatcher.Invoke(() => AppendProcessLog(message))));
-
-                if (!result.Success)
-                {
-                    AppendProcessLog($"生成失败: {result.Message}", isError: true);
-                    UpdateStatus($"生成失败", StatusType.Error);
-                    _logger.LogError($"D3驱动生成失败: {result.Message}");
-                    MessageBox.Show($"生成失败！\n\n{result.Message}",
-                        "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-                    return;
-                }
-
-                AppendProcessLog("✓ D3驱动代码生成完成");
-                UpdateStatus("✓ D3项目生成完成", StatusType.Success);
-                _logger.LogInformation("D3驱动项目生成成功");
-
-                // 设置状态标志
-                CanAdjustMethods = true;
-                CanCompile = true;
-                
-                // 更新项目信息
-                ProjectInfoText = $"项目：{brand}_{model}\n路径：{outputPath}\n状态：已生成，待编译";
-
-                // 提示完成
-                var dialogResult = MessageBox.Show(
-                    $"D3驱动项目生成完成！\n\n项目目录: {outputPath}\n\n是否打开项目目录？",
-                    "生成成功",
-                    MessageBoxButton.YesNo,
-                    MessageBoxImage.Information);
-
-                if (dialogResult == MessageBoxResult.Yes)
-                {
-                    OpenDirectory(outputPath);
-                }
+                // 步骤8：完成提示
+                ShowCompletionMessage(projectInfo.OutputPath);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "生成D3驱动过程中发生错误");
-                AppendProcessLog($"❌ 发生异常: {ex.Message}");
-                UpdateStatus("✗ 生成过程中发生错误", StatusType.Error);
-                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}",
-                    "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                HandleGenerationError(ex);
             }
             finally
             {
@@ -515,62 +393,508 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         /// <summary>
-        /// 从在线服务器生成客户端代码
+        /// 验证选择并获取选择结果
         /// </summary>
-        private async Task<string?> GenerateClientCodeFromOnlineServer(
+        private ValidationResult ValidateAndGetSelection()
+        {
+            AppendProcessLog("▶ 验证特性选择...");
+            var (isValid, errorMessage, isOnline, selectedFeatures) = ValidateSelection();
+            return new ValidationResult
+            {
+                IsValid = isValid,
+                ErrorMessage = errorMessage,
+                IsOnline = isOnline,
+                SelectedFeatures = selectedFeatures
+            };
+        }
+
+        /// <summary>
+        /// 从用户获取设备信息
+        /// </summary>
+        private DeviceInfo? GetDeviceInfoFromUser(bool isOnline, List<FeatureInfoViewModel>? selectedFeatures)
+        {
+            AppendProcessLog("▶ 等待用户输入设备信息...");
+
+            var deviceInfoDialog = new Views.DeviceInfoDialog();
+            var deviceInfoViewModel = new DeviceInfoDialogViewModel();
+
+            // 如果是在线服务器，尝试自动填充DeviceType
+            if (isOnline && selectedFeatures?.FirstOrDefault()?.ParentServer != null)
+            {
+                var parentServer = selectedFeatures.First().ParentServer;
+                deviceInfoViewModel.DeviceType = parentServer?.ServerType ?? "";
+            }
+
+            deviceInfoDialog.DataContext = deviceInfoViewModel;
+            deviceInfoDialog.Owner = Application.Current.MainWindow;
+
+            if (deviceInfoDialog.ShowDialog() != true)
+            {
+                return null;
+            }
+
+            var deviceInfo = new DeviceInfo
+            {
+                Brand = deviceInfoViewModel.Brand.Trim(),
+                Model = deviceInfoViewModel.Model.Trim(),
+                DeviceType = deviceInfoViewModel.DeviceType.Trim(),
+                Developer = deviceInfoViewModel.Developer.Trim()
+            };
+
+            AppendProcessLog($"✓ 设备信息：{deviceInfo.Brand} {deviceInfo.Model} ({deviceInfo.DeviceType}) - 开发者：{deviceInfo.Developer}");
+            return deviceInfo;
+        }
+
+        /// <summary>
+        /// 生成项目信息（命名空间、输出路径等）
+        /// </summary>
+        private ProjectInfo GenerateProjectInfo(DeviceInfo deviceInfo)
+        {
+            AppendProcessLog("▶ 生成项目信息...");
+
+            var namespaceName = $"BR.ECS.DeviceDrivers.{deviceInfo.DeviceType}.{deviceInfo.Brand}_{deviceInfo.Model}";
+            var timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+            var outputPath = Path.Combine(
+                Path.GetTempPath(),
+                "Sila2D3Gen",
+                $"{deviceInfo.Brand}_{deviceInfo.Model}_{timestamp}");
+
+            AppendProcessLog($"  命名空间: {namespaceName}");
+            AppendProcessLog($"  输出目录: {outputPath}");
+            _logger.LogInformation($"命名空间: {namespaceName}, 输出目录: {outputPath}");
+
+            return new ProjectInfo
+            {
+                Namespace = namespaceName,
+                OutputPath = outputPath,
+                Timestamp = timestamp
+            };
+        }
+
+        /// <summary>
+        /// 生成客户端代码（统一入口）
+        /// 本地特性与服务器特性的不同在于本地特性是直接从本地文件生成，而服务器特性是先从服务器获取特性，然后生成客户端代码.还有一点设备类型在线服务器可以直接获取到,但是从文件生成就无法获取.需要用户手动
+        /// 获取特性后的流程两者应该完全一致,所以代码上也要共用
+        /// </summary>
+        private async Task<ClientCodeGenerationResult> GenerateClientCodeAsync(
+            bool isOnline,
+            List<FeatureInfoViewModel>? selectedFeatures,
+            ProjectInfo projectInfo)
+        {
+            AppendProcessLog("▶ 生成客户端代码...");
+            UpdateStatus("正在生成客户端代码...", StatusType.Info);
+
+            try
+            {
+                string? clientCodePath;
+                string? serverIp = null;
+                int? serverPort = null;
+
+                if (isOnline)
+                {
+                    // 步骤1：从在线服务器获取特性并生成代码
+                    AppendProcessLog("  来源：在线服务器");
+                    var result = await GenerateClientCodeFromOnlineServerAsync(
+                        projectInfo.OutputPath,
+                        projectInfo.Namespace,
+                        selectedFeatures!);
+
+                    if (result == null)
+                    {
+                        return new ClientCodeGenerationResult { Success = false, ErrorMessage = "在线服务器代码生成失败" };
+                    }
+
+                    clientCodePath = result.Value.ClientCodePath;
+                    serverIp = result.Value.ServerIp;
+                    serverPort = result.Value.ServerPort;
+                }
+                else
+                {
+                    // 步骤1：从本地特性文件获取特性并生成代码
+                    AppendProcessLog("  来源：本地特性文件");
+                    var localFeatures = LocalNodes
+                        .SelectMany(n => n.Files.Where(f => f.IsSelected))
+                        .ToList();
+
+                    clientCodePath = await GenerateClientCodeFromLocalFeaturesAsync(
+                        projectInfo.OutputPath,
+                        projectInfo.Namespace,
+                        localFeatures);
+
+                    if (clientCodePath == null)
+                    {
+                        return new ClientCodeGenerationResult { Success = false, ErrorMessage = "本地特性文件代码生成失败" };
+                    }
+
+                    // 本地特性没有服务器信息
+                    serverIp = null;
+                    serverPort = null;
+                }
+
+                // 步骤2：客户端代码生成完成（统一处理）
+                AppendProcessLog("✓ 客户端代码生成完成");
+                return new ClientCodeGenerationResult
+                {
+                    Success = true,
+                    ClientCodePath = clientCodePath,
+                    ServerIp = serverIp,
+                    ServerPort = serverPort
+                };
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "生成客户端代码失败");
+                return new ClientCodeGenerationResult
+                {
+                    Success = false,
+                    ErrorMessage = ex.Message
+                };
+            }
+        }
+
+        /// <summary>
+        /// 分析客户端代码
+        /// </summary>
+        private ClientAnalysisResult? AnalyzeClientCode(string clientCodePath)
+        {
+            AppendProcessLog("▶ 分析客户端代码...");
+            UpdateStatus("正在分析客户端代码...", StatusType.Info);
+
+            try
+            {
+                var analyzer = new ClientCodeAnalyzer();
+                var analysisResult = analyzer.Analyze(clientCodePath);
+                _currentAnalysisResult = analysisResult;
+
+                AppendProcessLog($"✓ 检测到 {analysisResult.Features.Count} 个特性");
+
+                // 统计方法数量
+                var totalMethods = analysisResult.Features.Sum(f => f.Methods.Count);
+                AppendProcessLog($"  共 {totalMethods} 个方法");
+
+                return analysisResult;
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "分析客户端代码失败");
+                AppendProcessLog($"❌ 分析失败: {ex.Message}", isError: true);
+                MessageBox.Show($"分析客户端代码失败：\n{ex.Message}", "错误",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 显示方法预览窗口并同步方法分类
+        /// </summary>
+        private bool ShowMethodPreviewAndSync(ClientAnalysisResult analysisResult)
+        {
+            AppendProcessLog("▶ 等待用户调整方法特性...");
+
+            // 更新预览数据
+            var previewData = analysisResult.GetMethodPreviewData();
+            MethodPreviewData = new ObservableCollection<MethodPreviewData>(previewData);
+
+            // 显示方法预览窗口
+            var result = ShowMethodPreviewWindow();
+            if (!result)
+            {
+                return false;
+            }
+
+            // 同步方法分类信息
+            AppendProcessLog("▶ 同步方法分类信息...");
+            SyncMethodClassification(analysisResult.Features);
+            AppendProcessLog("✓ 方法分类同步完成");
+
+            return true;
+        }
+
+        /// <summary>
+        /// 生成D3驱动代码
+        /// </summary>
+        private async Task GenerateD3DriverCodeAsync(
+            DeviceInfo deviceInfo,
+            ProjectInfo projectInfo,
+            ClientCodeGenerationResult clientCodeResult,
+            ClientAnalysisResult analysisResult,
+            ValidationResult validationResult)
+        {
+            AppendProcessLog("▶ 生成D3驱动代码...");
+            UpdateStatus("正在生成D3驱动代码...", StatusType.Info);
+
+            // 构建配置
+            var config = new D3DriverGenerationConfig
+            {
+                Brand = deviceInfo.Brand,
+                Model = deviceInfo.Model,
+                DeviceType = deviceInfo.DeviceType,
+                Developer = deviceInfo.Developer,
+                Namespace = projectInfo.Namespace,
+                OutputPath = projectInfo.OutputPath,
+                ClientCodePath = clientCodeResult.ClientCodePath,
+                Features = analysisResult.Features,
+                IsOnlineSource = validationResult.IsOnline,
+                ServerUuid = validationResult.IsOnline
+                    ? validationResult.SelectedFeatures?.FirstOrDefault()?.ParentServer?.Uuid.ToString()
+                    : null,
+                LocalFeatureXmlPaths = validationResult.IsOnline
+                    ? null
+                    : LocalNodes.SelectMany(n => n.Files.Where(f => f.IsSelected)).Select(f => f.FilePath).ToList(),
+                ServerIp = clientCodeResult.ServerIp,
+                ServerPort = clientCodeResult.ServerPort
+            };
+
+            _currentConfig = config;
+
+            // 执行生成
+            _generatorService = new D3DriverGeneratorService();
+            var result = await Task.Run(() => _generatorService.Generate(
+                config,
+                message => Application.Current.Dispatcher.Invoke(() => AppendProcessLog($"  {message}"))));
+
+            if (!result.Success)
+            {
+                AppendProcessLog($"❌ 生成失败: {result.Message}", isError: true);
+                UpdateStatus($"生成失败", StatusType.Error);
+                _logger.LogError($"D3驱动生成失败: {result.Message}");
+                MessageBox.Show($"生成失败！\n\n{result.Message}",
+                    "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                throw new Exception(result.Message);
+            }
+
+            AppendProcessLog("✓ D3驱动代码生成完成");
+            UpdateStatus("✓ D3项目生成完成", StatusType.Success);
+            _logger.LogInformation("D3驱动项目生成成功");
+
+            // 更新状态
+            CanAdjustMethods = true;
+            CanCompile = true;
+            ProjectInfoText = $"项目：{deviceInfo.Brand}_{deviceInfo.Model}\n" +
+                              $"路径：{projectInfo.OutputPath}\n" +
+                              $"状态：已生成，待编译";
+        }
+
+        /// <summary>
+        /// 显示完成消息
+        /// </summary>
+        private void ShowCompletionMessage(string outputPath)
+        {
+            AppendProcessLog("========== D3驱动生成完成 ==========");
+
+            var dialogResult = MessageBox.Show(
+                $"D3驱动项目生成完成！\n\n项目目录: {outputPath}\n\n是否打开项目目录？",
+                "生成成功",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Information);
+
+            if (dialogResult == MessageBoxResult.Yes)
+            {
+                OpenDirectory(outputPath);
+            }
+        }
+
+        /// <summary>
+        /// 处理生成错误
+        /// </summary>
+        private void HandleGenerationError(Exception ex)
+        {
+            _logger.LogError(ex, "生成D3驱动过程中发生错误");
+            AppendProcessLog($"❌ 发生异常: {ex.Message}", isError: true);
+            UpdateStatus("✗ 生成过程中发生错误", StatusType.Error);
+            MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}",
+                "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+        }
+
+        /// <summary>
+        /// 从在线服务器生成客户端代码（优化版：添加性能统计）
+        /// </summary>
+        private async Task<(string ClientCodePath, string ServerIp, int ServerPort)?> GenerateClientCodeFromOnlineServerAsync(
             string outputPath,
             string namespaceName,
             List<FeatureInfoViewModel> selectedFeatures)
         {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
             try
             {
-                // 创建项目目录和Sila2Client文件夹
-                var projectDir = Path.Combine(outputPath, namespaceName);
-                var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
-                Directory.CreateDirectory(clientCodeDir);
+                // 验证输入
+                if (!selectedFeatures.Any())
+                {
+                    AppendProcessLog("  ❌ 没有选中的特性", isError: true);
+                    MessageBox.Show("没有选中的特性", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return null;
+                }
 
-                // 获取第一个特性的父服务器
+                // 获取父服务器
                 var parentServer = selectedFeatures.FirstOrDefault()?.ParentServer;
                 if (parentServer == null)
                 {
+                    AppendProcessLog("  ❌ 无法获取服务器信息", isError: true);
                     MessageBox.Show("无法获取服务器信息", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                     return null;
                 }
 
-                // 使用服务器发现服务获取所有选中特性的Feature对象
+                AppendProcessLog($"  服务器: {parentServer.ServerName}");
+                AppendProcessLog($"  地址: {parentServer.IPAddress}:{parentServer.Port}");
+                AppendProcessLog($"  特性数量: {selectedFeatures.Count}");
+
+                // 创建输出目录
+                var projectDir = Path.Combine(outputPath, namespaceName);
+                var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
+                Directory.CreateDirectory(clientCodeDir);
+                AppendProcessLog($"  输出目录: {clientCodeDir}");
+
+                // 获取特性数据
+                AppendProcessLog("  正在获取特性数据...");
+                var fetchStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
                 var serverFeaturesMap = _discoveryService.GetSelectedFeaturesGroupedByServer(
                     new List<ServerInfoViewModel> { parentServer },
                     selectedOnly: true);
 
+                fetchStopwatch.Stop();
+
                 if (!serverFeaturesMap.Any())
                 {
+                    AppendProcessLog("  ❌ 无法获取特性数据", isError: true);
                     MessageBox.Show("无法获取特性数据", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                     return null;
                 }
 
-                // 获取第一个服务器的特性字典
                 var featuresDict = serverFeaturesMap.Values.First();
+                AppendProcessLog($"  ✓ 获取到 {featuresDict.Count} 个特性定义（{fetchStopwatch.ElapsedMilliseconds}ms）");
 
                 // 生成客户端代码
+                AppendProcessLog("  正在生成客户端代码文件（并行模式）...");
+                var codeGenStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
                 var result = await Task.Run(() => _codeGenerator.GenerateClientCodeFromFeatures(
                     featuresDict,
                     clientCodeDir,
                     "Sila2Client",
-                    message => Application.Current.Dispatcher.Invoke(() => UpdateStatus(message, StatusType.Info))));
+                    message => Application.Current.Dispatcher.Invoke(() => AppendProcessLog($"    {message}"))));
+
+                codeGenStopwatch.Stop();
 
                 if (!result.Success)
                 {
-                    MessageBox.Show($"生成客户端代码失败: {result.Message}", "错误", 
+                    AppendProcessLog($"  ❌ 生成失败: {result.Message}", isError: true);
+                    MessageBox.Show($"生成客户端代码失败: {result.Message}", "错误",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return null;
                 }
+
+                stopwatch.Stop();
+                AppendProcessLog($"  ✓ 生成成功，共 {result.GeneratedFiles.Count} 个文件");
+                AppendProcessLog($"  ⏱ 总耗时: {stopwatch.ElapsedMilliseconds:N0}ms (获取特性:{fetchStopwatch.ElapsedMilliseconds}ms + 生成:{codeGenStopwatch.ElapsedMilliseconds}ms)");
+
+                return (clientCodeDir, parentServer.IPAddress, parentServer.Port);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "从在线服务器生成客户端代码失败");
+                AppendProcessLog($"  ❌ 异常: {ex.Message}", isError: true);
+                MessageBox.Show($"生成客户端代码失败: {ex.Message}", "错误",
+                    MessageBoxButton.OK, MessageBoxImage.Error);
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// 从本地特性文件生成客户端代码（优化版：并行验证文件）
+        /// </summary>
+        private async Task<string?> GenerateClientCodeFromLocalFeaturesAsync(
+            string outputPath,
+            string namespaceName,
+            List<LocalFeatureFileViewModel> localFeatures)
+        {
+            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+            try
+            {
+                // 验证输入
+                if (!localFeatures.Any())
+                {
+                    AppendProcessLog("  ❌ 没有选中的本地特性文件", isError: true);
+                    MessageBox.Show("没有选中的本地特性文件", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return null;
+                }
+
+                AppendProcessLog($"  特性文件数量: {localFeatures.Count}");
+
+                // 创建输出目录
+                var projectDir = Path.Combine(outputPath, namespaceName);
+                var clientCodeDir = Path.Combine(projectDir, "Sila2Client");
+                Directory.CreateDirectory(clientCodeDir);
+                AppendProcessLog($"  输出目录: {clientCodeDir}");
+
+                // 收集所有特性文件路径
+                var featureFilePaths = localFeatures.Select(f => f.FilePath).ToList();
+
+                // 并行验证文件存在性（性能优化）
+                AppendProcessLog($"  正在验证 {featureFilePaths.Count} 个文件...");
+                var validationStopwatch = System.Diagnostics.Stopwatch.StartNew();
+                var validationResults = new System.Collections.Concurrent.ConcurrentBag<(string path, bool exists)>();
+
+                await Task.Run(() =>
+                {
+                    System.Threading.Tasks.Parallel.ForEach(featureFilePaths, filePath =>
+                    {
+                        validationResults.Add((filePath, File.Exists(filePath)));
+                    });
+                });
+
+                validationStopwatch.Stop();
+
+                // 检查验证结果
+                var missingFiles = validationResults.Where(r => !r.exists).ToList();
+                if (missingFiles.Any())
+                {
+                    foreach (var (path, _) in missingFiles)
+                    {
+                        AppendProcessLog($"  ❌ 文件不存在: {path}", isError: true);
+                    }
+                    MessageBox.Show($"以下文件不存在:\n{string.Join("\n", missingFiles.Select(f => f.path))}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return null;
+                }
+
+                // 批量记录验证成功的文件（避免频繁UI更新）
+                var validFileNames = featureFilePaths.Select(Path.GetFileName).ToList();
+                AppendProcessLog($"  ✓ 所有文件验证通过（{validationStopwatch.ElapsedMilliseconds}ms）: {string.Join(", ", validFileNames)}");
+
+                // 从本地XML文件生成客户端代码
+                AppendProcessLog("  正在从本地特性文件生成客户端代码（并行模式）...");
+                var codeGenStopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+                var result = await Task.Run(() => _codeGenerator.GenerateClientCode(
+                    featureFilePaths,
+                    clientCodeDir,
+                    "Sila2Client",
+                    message => Application.Current.Dispatcher.Invoke(() => AppendProcessLog($"    {message}"))));
+
+                codeGenStopwatch.Stop();
+
+                if (!result.Success)
+                {
+                    AppendProcessLog($"  ❌ 生成失败: {result.Message}", isError: true);
+                    MessageBox.Show($"生成客户端代码失败: {result.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return null;
+                }
+
+                stopwatch.Stop();
+                AppendProcessLog($"  ✓ 生成成功，共 {result.GeneratedFiles.Count} 个文件");
+                AppendProcessLog($"  ⏱ 总耗时: {stopwatch.ElapsedMilliseconds:N0}ms (验证:{validationStopwatch.ElapsedMilliseconds}ms + 生成:{codeGenStopwatch.ElapsedMilliseconds}ms)");
 
                 return clientCodeDir;
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "生成客户端代码失败");
-                MessageBox.Show($"生成客户端代码失败: {ex.Message}", "错误", 
+                _logger.LogError(ex, "从本地特性文件生成客户端代码失败");
+                AppendProcessLog($"  ❌ 异常: {ex.Message}", isError: true);
+                MessageBox.Show($"生成客户端代码失败: {ex.Message}", "错误",
                     MessageBoxButton.OK, MessageBoxImage.Error);
                 return null;
             }
@@ -610,30 +934,30 @@ namespace SilaGeneratorWpf.ViewModels
                 {
                     // 显示详细的设备信息
                     var errorMessage = "只能选择来自同一个服务器的特性！\n\n已选择的特性来自以下设备：\n\n";
-                    
+
                     foreach (var server in parentServers)
                     {
                         if (server == null) continue;
-                        
+
                         var featuresFromThisServer = selectedOnlineFeatures
                             .Where(f => f.ParentServer == server)
                             .ToList();
-                        
+
                         errorMessage += $"设备: {server.ServerName}\n";
                         errorMessage += $"地址: {server.IPAddress}:{server.Port}\n";
                         errorMessage += $"特性数量: {featuresFromThisServer.Count}\n";
                         errorMessage += "特性列表:\n";
-                        
+
                         foreach (var feature in featuresFromThisServer)
                         {
                             errorMessage += $"  • {feature.DisplayName}\n";
                         }
-                        
+
                         errorMessage += "\n";
                     }
-                    
+
                     errorMessage += "请只选择来自同一个服务器的特性。";
-                    
+
                     return (false, errorMessage, false, null);
                 }
 
@@ -734,7 +1058,7 @@ namespace SilaGeneratorWpf.ViewModels
 
                 // 复制生成的客户端代码文件
                 AppendProcessLog("复制Sila2客户端代码...");
-                
+
                 // 尝试新路径：ProjectName/Sila2Client
                 string? sourceClientDir = null;
                 var projectDirs = Directory.GetDirectories(CurrentProjectPath);
@@ -747,7 +1071,7 @@ namespace SilaGeneratorWpf.ViewModels
                         break;
                     }
                 }
-                
+
                 // 兼容旧路径：GeneratedClient
                 if (sourceClientDir == null)
                 {
@@ -758,7 +1082,7 @@ namespace SilaGeneratorWpf.ViewModels
                         AppendProcessLog("  使用旧版GeneratedClient路径");
                     }
                 }
-                
+
                 if (sourceClientDir != null && Directory.Exists(sourceClientDir))
                 {
                     // 目标也应该是Sila2Client（新结构）
@@ -798,7 +1122,7 @@ namespace SilaGeneratorWpf.ViewModels
                 {
                     AppendProcessLog($"❌ 编译失败（{compileResult.ErrorCount} 个错误）");
                     AppendProcessLog(compileResult.Message);
-                    MessageBox.Show($"编译失败！\n\n{compileResult.Message}", "编译错误", 
+                    MessageBox.Show($"编译失败！\n\n{compileResult.Message}", "编译错误",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
@@ -823,7 +1147,7 @@ namespace SilaGeneratorWpf.ViewModels
             {
                 _logger.LogError(ex, "使用现有项目编译失败");
                 AppendProcessLog($"❌ 发生异常: {ex.Message}");
-                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误", 
+                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -932,20 +1256,20 @@ namespace SilaGeneratorWpf.ViewModels
                     errorMessage += $"当前尝试选择: {feature.DisplayName}\n";
                     errorMessage += $"来自服务器: {server.ServerName} ({server.IPAddress}:{server.Port})\n\n";
                     errorMessage += "已选择的特性来自:\n";
-                    
+
                     foreach (var otherServer in otherServers)
                     {
                         var featuresFromServer = allSelectedFeatures
                             .Where(f => f.ParentServer == otherServer)
                             .ToList();
-                        
+
                         errorMessage += $"\n服务器: {otherServer?.ServerName} ({otherServer?.IPAddress}:{otherServer?.Port})\n";
                         foreach (var f in featuresFromServer)
                         {
                             errorMessage += $"  • {f.DisplayName}\n";
                         }
                     }
-                    
+
                     errorMessage += "\n请先取消其他服务器的特性选择。";
 
                     // 记录日志
@@ -994,7 +1318,7 @@ namespace SilaGeneratorWpf.ViewModels
             var prefix = isError ? "❌" : "ℹ️";
             _processLogBuilder.AppendLine($"[{timestamp}] {prefix} {message}");
             ProcessLog = _processLogBuilder.ToString();
-            
+
             if (isError)
             {
                 ProcessLogColor = System.Windows.Media.Brushes.Red;
@@ -1028,14 +1352,14 @@ namespace SilaGeneratorWpf.ViewModels
                 method.IsIncluded = previewData.IsIncluded;
                 method.IsOperations = previewData.IsOperations;
                 method.IsMaintenance = previewData.IsMaintenance;
-                
+
                 // 保持向后兼容（已废弃的Category字段）
-                #pragma warning disable CS0618
+#pragma warning disable CS0618
                 if (previewData.IsMaintenance)
                     method.Category = MethodCategory.Maintenance;
                 else if (previewData.IsOperations)
                     method.Category = MethodCategory.Operations;
-                #pragma warning restore CS0618
+#pragma warning restore CS0618
             }
         }
 
@@ -1074,69 +1398,69 @@ namespace SilaGeneratorWpf.ViewModels
         private async Task CompileD3ProjectAsync()
         {
             AppendProcessLog("开始编译D3项目...");
-            
+
             try
             {
                 // 验证是否已生成项目
                 if (string.IsNullOrEmpty(CurrentProjectPath) || _currentConfig == null)
                 {
                     AppendProcessLog("错误：尚未生成D3项目", isError: true);
-                    MessageBox.Show("请先点击\"生成D3项目\"按钮生成项目", "提示", 
+                    MessageBox.Show("请先点击\"生成D3项目\"按钮生成项目", "提示",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                
+
                 // 查找.csproj文件（项目名称与命名空间一致）
                 var projectFile = Path.Combine(CurrentProjectPath, $"{_currentConfig.Namespace}.csproj");
                 if (!File.Exists(projectFile))
                 {
                     AppendProcessLog($"错误：找不到项目文件 {projectFile}", isError: true);
-                    MessageBox.Show($"找不到项目文件：\n{projectFile}", "错误", 
+                    MessageBox.Show($"找不到项目文件：\n{projectFile}", "错误",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
-                
+
                 // 执行编译
                 AppendProcessLog($"编译项目：{projectFile}");
                 UpdateStatus("正在编译项目...", StatusType.Info);
-                
+
                 if (_generatorService == null)
                 {
                     _generatorService = new D3DriverGeneratorService();
                 }
-                
+
                 var compileResult = await Task.Run(() => _generatorService.CompileProject(
                     projectFile,
                     message => Application.Current.Dispatcher.Invoke(() => AppendProcessLog(message))));
-                
+
                 if (!compileResult.Success)
                 {
                     AppendProcessLog($"编译失败（{compileResult.ErrorCount} 个错误）", isError: true);
                     AppendProcessLog(compileResult.Message, isError: true);
                     UpdateStatus("编译失败", StatusType.Error);
-                    MessageBox.Show($"编译失败！\n\n{compileResult.Message}", "编译错误", 
+                    MessageBox.Show($"编译失败！\n\n{compileResult.Message}", "编译错误",
                         MessageBoxButton.OK, MessageBoxImage.Error);
                     return;
                 }
-                
+
                 AppendProcessLog("✅ 编译成功");
                 CurrentDllPath = compileResult.DllPath;
                 UpdateStatus("编译成功", StatusType.Success);
                 _logger.LogInformation("D3项目编译成功");
-                
+
                 // 更新项目信息
                 ProjectInfoText = $"项目：{_currentConfig.Brand}_{_currentConfig.Model}\n" +
                                   $"路径：{CurrentProjectPath}\n" +
                                   $"DLL：{CurrentDllPath}\n" +
                                   $"状态：已编译";
-                
+
                 // 提示完成
                 var dialogResult = MessageBox.Show(
                     $"D3项目编译完成！\n\nDLL目录: {CurrentDllPath}\n\n是否打开DLL目录？",
                     "编译成功",
                     MessageBoxButton.YesNo,
                     MessageBoxImage.Information);
-                
+
                 if (dialogResult == MessageBoxResult.Yes)
                 {
                     OpenDirectory(CurrentDllPath);
@@ -1146,7 +1470,7 @@ namespace SilaGeneratorWpf.ViewModels
             {
                 _logger.LogError(ex, "编译D3项目失败");
                 AppendProcessLog($"发生异常: {ex.Message}", isError: true);
-                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误", 
+                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1162,47 +1486,47 @@ namespace SilaGeneratorWpf.ViewModels
         private void AdjustMethodAttributes()
         {
             AppendProcessLog("打开方法特性调整窗口...");
-            
+
             try
             {
                 // 验证是否有可调整的方法数据
                 if (MethodPreviewData == null || !MethodPreviewData.Any())
                 {
                     AppendProcessLog("错误：没有可调整的方法数据", isError: true);
-                    MessageBox.Show("没有可调整的方法数据", "提示", 
+                    MessageBox.Show("没有可调整的方法数据", "提示",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                     return;
                 }
-                
+
                 // 打开方法预览窗口
                 var result = ShowMethodPreviewWindow();
-                
+
                 if (!result)
                 {
                     AppendProcessLog("用户取消了方法特性调整");
                     return;
                 }
-                
+
                 // 同步到分析结果
                 if (_currentAnalysisResult != null)
                 {
                     SyncMethodClassification(_currentAnalysisResult.Features);
                 }
-                
+
                 // 重新生成D3Driver.cs文件
                 AppendProcessLog("重新生成D3Driver.cs文件...");
                 if (_currentConfig != null && _currentAnalysisResult != null)
                 {
                     _currentConfig.Features = _currentAnalysisResult.Features;
-                    
+
                     if (_generatorService == null)
                     {
                         _generatorService = new D3DriverGeneratorService();
                     }
-                    
-                    var regenerateResult = _generatorService.RegenerateD3Driver(_currentConfig, 
+
+                    var regenerateResult = _generatorService.RegenerateD3Driver(_currentConfig,
                         message => AppendProcessLog(message));
-                    
+
                     if (regenerateResult.Success)
                     {
                         AppendProcessLog("✅ D3Driver.cs文件已更新");
@@ -1215,7 +1539,7 @@ namespace SilaGeneratorWpf.ViewModels
                     else
                     {
                         AppendProcessLog($"重新生成失败: {regenerateResult.Message}", isError: true);
-                        MessageBox.Show($"重新生成D3Driver.cs失败：\n{regenerateResult.Message}", "错误", 
+                        MessageBox.Show($"重新生成D3Driver.cs失败：\n{regenerateResult.Message}", "错误",
                             MessageBoxButton.OK, MessageBoxImage.Error);
                     }
                 }
@@ -1223,7 +1547,7 @@ namespace SilaGeneratorWpf.ViewModels
             catch (Exception ex)
             {
                 AppendProcessLog($"发生异常: {ex.Message}", isError: true);
-                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误", 
+                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}", "错误",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1273,7 +1597,8 @@ namespace SilaGeneratorWpf.ViewModels
                     {
                         try
                         {
-                            // TODO: 实现从服务器下载特性XML
+                            await File.WriteAllTextAsync(Path.Combine(outputDir,$"{feature.DisplayName.Replace(" ","")}-v{feature.Version.Replace(".","_")}.sila.xml"), feature.FeatureXml, System.Text.Encoding.UTF8);
+
                             AppendProcessLog($"导出特性: {feature.DisplayName}");
                         }
                         catch (Exception ex)
@@ -1304,13 +1629,13 @@ namespace SilaGeneratorWpf.ViewModels
                     }
                 }
 
-                MessageBox.Show($"特性导出完成！\n\n输出目录: {outputDir}", "导出成功", 
+                MessageBox.Show($"特性导出完成！\n\n输出目录: {outputDir}", "导出成功",
                     MessageBoxButton.OK, MessageBoxImage.Information);
             }
             catch (Exception ex)
             {
                 _logger.LogError(ex, "导出特性失败");
-                MessageBox.Show($"导出失败: {ex.Message}", "错误", 
+                MessageBox.Show($"导出失败: {ex.Message}", "错误",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -1328,4 +1653,52 @@ namespace SilaGeneratorWpf.ViewModels
         Warning,
         Error
     }
+
+    #region 辅助数据类
+
+    /// <summary>
+    /// 验证结果
+    /// </summary>
+    internal class ValidationResult
+    {
+        public bool IsValid { get; set; }
+        public string ErrorMessage { get; set; } = string.Empty;
+        public bool IsOnline { get; set; }
+        public List<FeatureInfoViewModel>? SelectedFeatures { get; set; }
+    }
+
+    /// <summary>
+    /// 设备信息
+    /// </summary>
+    internal class DeviceInfo
+    {
+        public string Brand { get; set; } = string.Empty;
+        public string Model { get; set; } = string.Empty;
+        public string DeviceType { get; set; } = string.Empty;
+        public string Developer { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 项目信息
+    /// </summary>
+    internal class ProjectInfo
+    {
+        public string Namespace { get; set; } = string.Empty;
+        public string OutputPath { get; set; } = string.Empty;
+        public string Timestamp { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 客户端代码生成结果
+    /// </summary>
+    internal class ClientCodeGenerationResult
+    {
+        public bool Success { get; set; }
+        public string? ClientCodePath { get; set; }
+        public string? ServerIp { get; set; }
+        public int? ServerPort { get; set; }
+        public string ErrorMessage { get; set; } = string.Empty;
+    }
+
+    #endregion
 }

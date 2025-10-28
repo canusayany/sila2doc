@@ -1,8 +1,11 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Threading.Tasks;
 using Tecan.Sila2;
 using Tecan.Sila2.Generator;
 
@@ -35,7 +38,7 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 从 Feature XML 文件生成客户端代码
+        /// 从 Feature XML 文件生成客户端代码（并行优化版本）
         /// </summary>
         public GenerationResult GenerateClientCode(
             IEnumerable<string> featureFiles,
@@ -43,8 +46,11 @@ namespace SilaGeneratorWpf.Services
             string? customNamespace = null,
             Action<string>? progressCallback = null)
         {
+            var stopwatch = Stopwatch.StartNew();
             var result = new GenerationResult { Success = true };
-            var generatedFiles = new List<string>();
+            var generatedFiles = new ConcurrentBag<string>();
+            var warnings = new ConcurrentBag<string>();
+            var featureFilesList = featureFiles.ToList();
 
             try
             {
@@ -53,22 +59,30 @@ namespace SilaGeneratorWpf.Services
                     Directory.CreateDirectory(outputDirectory);
                 }
 
-                foreach (var featureFile in featureFiles)
+                progressCallback?.Invoke($"开始并行处理 {featureFilesList.Count} 个特性文件...");
+
+                // 并行处理特性文件
+                var parallelOptions = new ParallelOptions
+                {
+                    MaxDegreeOfParallelism = Environment.ProcessorCount
+                };
+
+                Parallel.ForEach(featureFilesList, parallelOptions, (featureFile) =>
                 {
                     try
                     {
-                        progressCallback?.Invoke($"正在处理: {Path.GetFileName(featureFile)}");
+                        progressCallback?.Invoke($"[{Task.CurrentId}] 正在处理: {Path.GetFileName(featureFile)}");
 
                         if (!File.Exists(featureFile))
                         {
-                            result.Warnings.Add($"文件不存在: {featureFile}");
-                            continue;
+                            warnings.Add($"文件不存在: {featureFile}");
+                            return;
                         }
 
                         // 加载 Feature 以获取标识符
                         var feature = FeatureSerializer.Load(featureFile);
                         
-                        // 生成代码
+                        // 生成代码（线程安全）
                         var files = GenerateClientFromFile(
                             featureFile,
                             feature.Identifier,
@@ -76,27 +90,34 @@ namespace SilaGeneratorWpf.Services
                             customNamespace ?? "Sila2Client",
                             progressCallback);
 
-                        generatedFiles.AddRange(files);
-                        progressCallback?.Invoke($"✓ 完成: {feature.Identifier}");
+                        foreach (var file in files)
+                        {
+                            generatedFiles.Add(file);
+                        }
+
+                        progressCallback?.Invoke($"[{Task.CurrentId}] ✓ 完成: {feature.Identifier}");
                     }
                     catch (Exception ex)
                     {
                         var fileName = Path.GetFileName(featureFile);
-                        result.Warnings.Add($"处理 {fileName} 时出错: {ex.Message}");
-                        progressCallback?.Invoke($"✗ 错误: {fileName} - {ex.Message}");
+                        warnings.Add($"处理 {fileName} 时出错: {ex.Message}");
+                        progressCallback?.Invoke($"[{Task.CurrentId}] ✗ 错误: {fileName} - {ex.Message}");
                     }
-                }
+                });
 
-                result.GeneratedFiles = generatedFiles;
+                result.GeneratedFiles = generatedFiles.ToList();
+                result.Warnings = warnings.ToList();
                 result.Message = $"成功生成 {generatedFiles.Count} 个文件";
 
-                // 注：不再复制DLL到Sila2Client文件夹
-                // 这些依赖由项目的NuGet包引用提供（.csproj中的PackageReference）
-                // CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+                stopwatch.Stop();
+                progressCallback?.Invoke($"⏱ 代码生成耗时: {stopwatch.ElapsedMilliseconds:N0} 毫秒");
 
                 // 去重处理：检查并注释重复的类型定义
                 progressCallback?.Invoke("检查重复的类型定义...");
+                var dedupStopwatch = Stopwatch.StartNew();
                 var dedupResult = _deduplicator.DeduplicateGeneratedCode(outputDirectory, progressCallback);
+                dedupStopwatch.Stop();
+                
                 if (dedupResult.Success && dedupResult.CommentedTypes.Count > 0)
                 {
                     result.Warnings.Add($"已自动注释 {dedupResult.CommentedTypes.Count} 个重复的类型定义");
@@ -109,6 +130,7 @@ namespace SilaGeneratorWpf.Services
                         result.Warnings.Add($"  ... 还有 {dedupResult.CommentedTypes.Count - 5} 个");
                     }
                 }
+                progressCallback?.Invoke($"⏱ 去重处理耗时: {dedupStopwatch.ElapsedMilliseconds:N0} 毫秒");
             }
             catch (Exception ex)
             {
@@ -121,7 +143,7 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 从 Feature 对象直接生成客户端代码
+        /// 从 Feature 对象直接生成客户端代码（并行优化版本）
         /// </summary>
         public GenerationResult GenerateClientCodeFromFeatures(
             Dictionary<string, Feature> features,
@@ -129,8 +151,10 @@ namespace SilaGeneratorWpf.Services
             string? customNamespace = null,
             Action<string>? progressCallback = null)
         {
+            var stopwatch = Stopwatch.StartNew();
             var result = new GenerationResult { Success = true };
-            var generatedFiles = new List<string>();
+            var generatedFiles = new ConcurrentBag<string>();
+            var warnings = new ConcurrentBag<string>();
 
             try
             {
@@ -145,12 +169,20 @@ namespace SilaGeneratorWpf.Services
 
                 try
                 {
-                    foreach (var kvp in features)
+                    progressCallback?.Invoke($"开始并行处理 {features.Count} 个特性...");
+
+                    // 并行处理特性
+                    var parallelOptions = new ParallelOptions
+                    {
+                        MaxDegreeOfParallelism = Environment.ProcessorCount
+                    };
+
+                    Parallel.ForEach(features, parallelOptions, (kvp) =>
                     {
                         var feature = kvp.Value;
                         try
                         {
-                            progressCallback?.Invoke($"正在处理: {feature.Identifier}");
+                            progressCallback?.Invoke($"[{Task.CurrentId}] 正在处理: {feature.Identifier}");
 
                             // 将 Feature 对象保存为临时 XML 文件
                             var tempFeatureFile = Path.Combine(tempDir, $"{feature.Identifier}.sila.xml");
@@ -164,26 +196,33 @@ namespace SilaGeneratorWpf.Services
                                 customNamespace ?? "Sila2Client",
                                 progressCallback);
 
-                            generatedFiles.AddRange(files);
-                            progressCallback?.Invoke($"✓ 完成: {feature.Identifier}");
+                            foreach (var file in files)
+                            {
+                                generatedFiles.Add(file);
+                            }
+
+                            progressCallback?.Invoke($"[{Task.CurrentId}] ✓ 完成: {feature.Identifier}");
                         }
                         catch (Exception ex)
                         {
-                            result.Warnings.Add($"处理 {feature.Identifier} 时出错: {ex.Message}");
-                            progressCallback?.Invoke($"✗ 错误: {feature.Identifier} - {ex.Message}");
+                            warnings.Add($"处理 {feature.Identifier} 时出错: {ex.Message}");
+                            progressCallback?.Invoke($"[{Task.CurrentId}] ✗ 错误: {feature.Identifier} - {ex.Message}");
                         }
-                    }
+                    });
 
-                    result.GeneratedFiles = generatedFiles;
+                    result.GeneratedFiles = generatedFiles.ToList();
+                    result.Warnings = warnings.ToList();
                     result.Message = $"成功生成 {generatedFiles.Count} 个文件";
 
-                    // 注：不再复制DLL到Sila2Client文件夹
-                    // 这些依赖由项目的NuGet包引用提供（.csproj中的PackageReference）
-                    // CopyRequiredDllsToClientDirectory(outputDirectory, progressCallback);
+                    stopwatch.Stop();
+                    progressCallback?.Invoke($"⏱ 代码生成耗时: {stopwatch.ElapsedMilliseconds:N0} 毫秒");
 
                     // 去重处理：检查并注释重复的类型定义
                     progressCallback?.Invoke("检查重复的类型定义...");
+                    var dedupStopwatch = Stopwatch.StartNew();
                     var dedupResult = _deduplicator.DeduplicateGeneratedCode(outputDirectory, progressCallback);
+                    dedupStopwatch.Stop();
+                    
                     if (dedupResult.Success && dedupResult.CommentedTypes.Count > 0)
                     {
                         result.Warnings.Add($"已自动注释 {dedupResult.CommentedTypes.Count} 个重复的类型定义");
@@ -196,6 +235,7 @@ namespace SilaGeneratorWpf.Services
                             result.Warnings.Add($"  ... 还有 {dedupResult.CommentedTypes.Count - 5} 个");
                         }
                     }
+                    progressCallback?.Invoke($"⏱ 去重处理耗时: {dedupStopwatch.ElapsedMilliseconds:N0} 毫秒");
                 }
                 finally
                 {

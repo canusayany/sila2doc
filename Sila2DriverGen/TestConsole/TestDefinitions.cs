@@ -29,7 +29,10 @@ namespace Sila2DriverGen.TestConsole
         ErrorHandling_CompilationFailure = 7,
         
         /// <summary>在线服务器测试：完整流程</summary>
-        OnlineServer = 8
+        OnlineServer = 8,
+        
+        /// <summary>性能测试：并行处理优化</summary>
+        PerformanceOptimization = 9
     }
 
     /// <summary>
@@ -47,7 +50,10 @@ namespace Sila2DriverGen.TestConsole
         ErrorHandling,
         
         /// <summary>在线服务器测试</summary>
-        OnlineServer
+        OnlineServer,
+        
+        /// <summary>性能测试</summary>
+        Performance
     }
 
     /// <summary>
@@ -133,6 +139,14 @@ namespace Sila2DriverGen.TestConsole
                     Name = "在线服务器完整流程",
                     Description = "扫描在线SiLA2服务器并生成D3驱动（如无服务器则跳过）",
                     Category = TestCategory.OnlineServer,
+                    RequiresPrerequisite = false
+                },
+                new TestInfo
+                {
+                    Item = TestItem.PerformanceOptimization,
+                    Name = "性能优化测试",
+                    Description = "测试并行处理、文件验证和性能监控功能",
+                    Category = TestCategory.Performance,
                     RequiresPrerequisite = false
                 }
             };

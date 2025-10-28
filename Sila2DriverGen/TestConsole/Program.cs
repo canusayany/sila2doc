@@ -80,6 +80,21 @@ namespace Sila2DriverGen.TestConsole
                 return;
             }
             
+            // 检查是否运行性能测试
+            if (args.Length > 0 && args[0].ToLower() == "--performance")
+            {
+                Console.WriteLine("运行性能优化测试...");
+                Console.WriteLine();
+                
+                var perfTest = new PerformanceTest();
+                var success = await perfTest.RunAllPerformanceTestsAsync();
+                
+                Console.WriteLine();
+                Console.WriteLine($"性能测试结果: {(success ? "✓ 通过" : "✗ 失败")}");
+                Environment.Exit(success ? 0 : 1);
+                return;
+            }
+            
             var runner = new TestRunner();
             await runner.RunAsync();
             
