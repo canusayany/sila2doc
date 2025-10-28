@@ -40,15 +40,36 @@
 
                 <!--  工具栏  -->
                 <StackPanel Grid.Row="0" Margin="10" Orientation="Vertical">
-                    <Button
-                        Margin="0,0,0,5"
+                    <!--  实时监控状态显示  -->
+                    <Border 
+                        Background="#E8F5E9"
+                        BorderBrush="#4CAF50"
+                        BorderThickness="1"
+                        CornerRadius="3"
                         Padding="10,8"
-                        Background="#3498db"
-                        BorderThickness="0"
-                        Command="{Binding ScanServersCommand}"
-                        Content="🔍 扫描服务器"
-                        FontSize="10"
-                        Foreground="White" />
+                        Margin="0,0,0,10">
+                        <StackPanel Orientation="Vertical">
+                            <StackPanel Orientation="Horizontal" Margin="0,0,0,5">
+                                <TextBlock 
+                                    Text="🟢" 
+                                    FontSize="14" 
+                                    VerticalAlignment="Center"
+                                    Margin="0,0,5,0"/>
+                                <TextBlock 
+                                    Text="实时监控已启动" 
+                                    FontSize="12"
+                                    FontWeight="SemiBold"
+                                    Foreground="#2E7D32"
+                                    VerticalAlignment="Center"/>
+                            </StackPanel>
+                            <TextBlock
+                                FontSize="11"
+                                Foreground="{Binding DiscoveryStatusColor}"
+                                Text="{Binding DiscoveryStatus}"
+                                TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+                    
                     <Button
                         Margin="0,0,0,5"
                         Padding="10,8"
@@ -57,13 +78,8 @@
                         Command="{Binding RefreshSelectedCommand}"
                         Content="🔄 刷新选中服务器"
                         FontSize="10"
+                        Visibility="Collapsed"
                         Foreground="White" />
-                    <TextBlock
-                        Margin="0,5,0,0"
-                        FontSize="12"
-                        Foreground="{Binding DiscoveryStatusColor}"
-                        Text="{Binding DiscoveryStatus}"
-                        TextWrapping="Wrap" />
                 </StackPanel>
 
                 <!--  服务器树  -->

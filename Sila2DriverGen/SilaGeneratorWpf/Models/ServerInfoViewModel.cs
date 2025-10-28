@@ -35,6 +35,11 @@ namespace SilaGeneratorWpf.Models
         public ObservableCollection<FeatureInfoViewModel> Features { get; set; } = new();
 
         /// <summary>
+        /// ServerData 缓存（用于后续获取特性等操作）
+        /// </summary>
+        public Tecan.Sila2.ServerData? ServerDataCache { get; set; }
+
+        /// <summary>
         /// 用于回调通知的委托
         /// </summary>
         public Action<ServerInfoViewModel, FeatureInfoViewModel>? OnFeatureSelectionChanged { get; set; }

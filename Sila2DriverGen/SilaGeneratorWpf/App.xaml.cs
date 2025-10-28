@@ -1,6 +1,7 @@
 using System.Windows;
 using System;
 using System.IO;
+using System.Runtime.InteropServices;
 using System.Windows.Threading;
 using SilaGeneratorWpf.Services;
 using Microsoft.Extensions.Logging;
@@ -15,8 +16,35 @@ namespace SilaGeneratorWpf
     {
         private IServiceProvider? _serviceProvider;
 
+        // Windows API 用于分配和隐藏控制台
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AllocConsole();
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool FreeConsole();
+
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        private const int SW_HIDE = 0;
+
         public App()
         {
+            // 为 Sila2Discovery 分配控制台（它需要设置Console.OutputEncoding）
+            AllocConsole();
+            
+            // 隐藏控制台窗口（但保持句柄有效）
+            var consoleWindow = GetConsoleWindow();
+            if (consoleWindow != IntPtr.Zero)
+            {
+                ShowWindow(consoleWindow, SW_HIDE);
+            }
+            
             // 捕获所有未处理的异常
             AppDomain.CurrentDomain.UnhandledException += CurrentDomain_UnhandledException;
             DispatcherUnhandledException += App_DispatcherUnhandledException;
@@ -92,6 +120,9 @@ namespace SilaGeneratorWpf
             {
                 disposable.Dispose();
             }
+            
+            // 释放控制台
+            FreeConsole();
             
             base.OnExit(e);
         }

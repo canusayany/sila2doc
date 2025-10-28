@@ -111,8 +111,13 @@ namespace SilaGeneratorWpf.Views
             DetailPanel.Children.Add(CreateInfoRow("命名空间", $"{feature.Originator}.{feature.Category}"));
             DetailPanel.Children.Add(CreateInfoRow("描述", feature.Description ?? ""));
 
-            var serverData = viewModel.GetServerData(featureViewModel.ParentServer!.Uuid);
-            if (serverData == null) return;
+            // 直接从 ServerInfoViewModel 获取 ServerData 缓存
+            var serverData = featureViewModel.ParentServer?.ServerDataCache;
+            if (serverData == null)
+            {
+                DetailPanel.Children.Add(CreateInfoRow("错误", "无法获取服务器数据，请刷新服务器"));
+                return;
+            }
 
             var interactionService = viewModel.GetInteractionService();
 

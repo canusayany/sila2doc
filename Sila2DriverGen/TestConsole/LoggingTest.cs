@@ -81,7 +81,7 @@ namespace Sila2DriverGen.TestConsole
                 Console.WriteLine($"  ✓ 找到 {logFiles.Length} 个日志文件");
                 
                 // 找到最新的日志文件
-                string latestLogFile = null;
+                string? latestLogFile = null;
                 DateTime latestTime = DateTime.MinValue;
                 foreach (var logFile in logFiles)
                 {

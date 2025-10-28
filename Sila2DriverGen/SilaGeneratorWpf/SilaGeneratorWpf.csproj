@@ -6,6 +6,9 @@
         <UseWPF>true</UseWPF>
         <UseWindowsForms>true</UseWindowsForms>
         <Nullable>enable</Nullable>
+        <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+        <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+        <NoWarn>$(NoWarn);CA1416</NoWarn>
     </PropertyGroup>
 
     <ItemGroup>
@@ -21,17 +24,20 @@
         <PackageReference Include="Microsoft.Build.Locator" Version="1.2.6" />
         <PackageReference Include="Microsoft.Build.Utilities.Core" Version="16.3.0" ExcludeAssets="runtime" />
         <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.8.0" />
-        <PackageReference Include="Microsoft.Extensions.Configuration" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Logging" Version="8.0.0" />
-        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="8.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Abstractions" Version="9.0.0" />
+        <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="9.0.0" />
         <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
         <PackageReference Include="Serilog" Version="3.1.1" />
         <PackageReference Include="Serilog.Extensions.Logging" Version="8.0.0" />
         <PackageReference Include="Serilog.Sinks.File" Version="5.0.0" />
         <PackageReference Include="System.CodeDom" Version="4.6.0" />
         <PackageReference Include="System.Drawing.Common" Version="8.0.0" />
+        <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="9.0.0" />
         <PackageReference Include="Tecan.Sila2.Client.NetCore" Version="4.4.1" />
         <PackageReference Include="Tecan.Sila2.DynamicClient" Version="4.4.1" />
         <PackageReference Include="Tecan.Sila2.NetCore" Version="4.4.1">
@@ -43,6 +49,13 @@
     <!-- 引用 Generator 项目 -->
     <ItemGroup>
         <ProjectReference Include="..\Generator\Generator.csproj" />
+    </ItemGroup>
+    
+    <!-- 引用 reflib 中的依赖库 -->
+    <ItemGroup>
+        <Reference Include="BR.PC.Device.Sila2Discovery">
+            <HintPath>reflib\BR.PC.Device.Sila2Discovery.dll</HintPath>
+        </Reference>
     </ItemGroup>
     <ItemGroup>
       <None Update="TemperatureController-v1_0.sila.xml">

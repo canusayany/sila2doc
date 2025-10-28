@@ -20,6 +20,7 @@ namespace SilaGeneratorWpf.ViewModels
     public partial class ServerDiscoveryViewModel : ObservableObject
     {
         private readonly ServerDiscoveryService _discoveryService;
+        private readonly Sila2RealTimeDiscoveryService _realTimeDiscoveryService;
         private readonly ServerInteractionService _interactionService;
         private readonly ClientCodeGenerator _codeGenerator;
         private readonly ILogger _logger;
@@ -28,10 +29,10 @@ namespace SilaGeneratorWpf.ViewModels
         private ObservableCollection<ServerInfoViewModel> _servers = new();
 
         [ObservableProperty]
-        private string _discoveryStatus = "就绪";
+        private string _discoveryStatus = "实时监控已启动";
 
         [ObservableProperty]
-        private string _discoveryStatusColor = "#7f8c8d";
+        private string _discoveryStatusColor = "#27ae60";
 
         [ObservableProperty]
         private string _outputDirectory = string.Empty;
@@ -48,11 +49,30 @@ namespace SilaGeneratorWpf.ViewModels
         public ServerDiscoveryViewModel()
         {
             _discoveryService = new ServerDiscoveryService();
+            _realTimeDiscoveryService = new Sila2RealTimeDiscoveryService();
             _interactionService = new ServerInteractionService();
             _codeGenerator = new ClientCodeGenerator();
             _logger = LoggerService.GetLogger<ServerDiscoveryViewModel>();
             
             InitializeOutputDirectory();
+
+            // 订阅实时监控事件
+            _realTimeDiscoveryService.ServerOnline += OnServerOnline;
+            _realTimeDiscoveryService.ServerOffline += OnServerOffline;
+            _realTimeDiscoveryService.ServerUpdated += OnServerUpdated;
+
+            // 启动实时监控
+            try
+            {
+                _realTimeDiscoveryService.StartRealTimeMonitoring();
+                _logger.LogInformation("ServerDiscoveryViewModel: 已启动SiLA2服务器实时监控");
+                UpdateStatus("实时监控已启动，等待服务器连接...", StatusType.Success);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "启动实时监控失败");
+                UpdateStatus("启动实时监控失败", StatusType.Error);
+            }
         }
 
         private void InitializeOutputDirectory()
@@ -61,38 +81,64 @@ namespace SilaGeneratorWpf.ViewModels
             OutputDirectory = Path.Combine(tempPath, "SilaDiscoveredServers", DateTime.Now.ToString("yyyyMMdd_HHmmss"));
         }
 
-        [RelayCommand]
-        private async Task ScanServersAsync()
+        /// <summary>
+        /// 服务器上线事件处理
+        /// </summary>
+        private void OnServerOnline(ServerInfoViewModel server)
         {
-            _logger.LogInformation("用户点击扫描服务器");
-            UpdateStatus("正在扫描服务器...", StatusType.Info);
-            
-            try
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                var servers = await _discoveryService.ScanServersAsync(TimeSpan.FromSeconds(3));
-                
-                Servers.Clear();
-                foreach (var server in servers)
+                // 检查是否已存在
+                var existing = Servers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing == null)
                 {
                     Servers.Add(server);
+                    
+                    _logger.LogInformation($"服务器上线: {server.ServerName}");
+                    UpdateStatus($"服务器上线: {server.ServerName} ({Servers.Count} 个在线)", StatusType.Success);
                 }
+            });
+        }
 
-                _logger.LogInformation($"扫描完成，发现 {servers.Count} 个服务器");
-                UpdateStatus($"发现 {servers.Count} 个服务器", StatusType.Success);
-
-                if (servers.Count == 0)
-                {
-                    _logger.LogWarning("未发现任何服务器");
-                    MessageBox.Show("未发现任何SiLA2服务器\n\n请确保：\n1. 服务器正在运行\n2. 网络连接正常\n3. mDNS服务已启用",
-                        "扫描结果", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
+        /// <summary>
+        /// 服务器下线事件处理
+        /// </summary>
+        private void OnServerOffline(ServerInfoViewModel server)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                _logger.LogError(ex, "扫描服务器时出错");
-                UpdateStatus("扫描失败", StatusType.Error);
-                MessageBox.Show($"扫描失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+                var existing = Servers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing != null)
+                {
+                    Servers.Remove(existing);
+                    
+                    _logger.LogInformation($"服务器下线: {server.ServerName}");
+                    UpdateStatus($"服务器下线: {server.ServerName} ({Servers.Count} 个在线)", StatusType.Warning);
+                }
+            });
+        }
+
+        /// <summary>
+        /// 服务器更新事件处理
+        /// </summary>
+        private void OnServerUpdated(ServerInfoViewModel server)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                var existing = Servers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing != null)
+                {
+                    // 更新服务器信息
+                    existing.ServerName = server.ServerName;
+                    existing.IPAddress = server.IPAddress;
+                    existing.Port = server.Port;
+                    existing.ServerType = server.ServerType;
+                    existing.Description = server.Description;
+                    existing.LastSeen = server.LastSeen;
+                    
+                    _logger.LogInformation($"服务器更新: {server.ServerName}");
+                }
+            });
         }
 
         [RelayCommand]
@@ -154,9 +200,23 @@ namespace SilaGeneratorWpf.ViewModels
             }
         }
 
+        /// <summary>
+        /// 获取 ServerData（已弃用，建议直接使用 ServerInfoViewModel.ServerDataCache）
+        /// </summary>
+        [Obsolete("建议直接使用 ServerInfoViewModel.ServerDataCache 属性")]
         public ServerData? GetServerData(Guid uuid)
         {
+#pragma warning disable CS0618 // 类型或成员已过时
             return _discoveryService.GetServerData(uuid);
+#pragma warning restore CS0618 // 类型或成员已过时
+        }
+        
+        /// <summary>
+        /// 根据 ServerInfoViewModel 获取 ServerData
+        /// </summary>
+        public ServerData? GetServerData(ServerInfoViewModel server)
+        {
+            return _discoveryService.GetServerData(server);
         }
 
         public ServerInteractionService GetInteractionService()

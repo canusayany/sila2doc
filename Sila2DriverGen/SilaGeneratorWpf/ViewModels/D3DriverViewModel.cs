@@ -20,6 +20,7 @@ namespace SilaGeneratorWpf.ViewModels
     {
         private readonly ILogger _logger;
         private readonly ServerDiscoveryService _discoveryService;
+        private readonly Sila2RealTimeDiscoveryService _realTimeDiscoveryService;
         private readonly ClientCodeGenerator _codeGenerator;
         private readonly LocalFeaturePersistenceService _persistenceService;
         private D3DriverGeneratorService? _generatorService;
@@ -114,6 +115,7 @@ namespace SilaGeneratorWpf.ViewModels
         {
             _logger = LoggerService.GetLogger<D3DriverViewModel>();
             _discoveryService = new ServerDiscoveryService();
+            _realTimeDiscoveryService = new Sila2RealTimeDiscoveryService();
             _codeGenerator = new ClientCodeGenerator();
             _persistenceService = new LocalFeaturePersistenceService();
 
@@ -121,6 +123,24 @@ namespace SilaGeneratorWpf.ViewModels
 
             // 加载持久化的本地特性
             LoadLocalFeatures();
+
+            // 订阅实时监控事件
+            _realTimeDiscoveryService.ServerOnline += OnServerOnline;
+            _realTimeDiscoveryService.ServerOffline += OnServerOffline;
+            _realTimeDiscoveryService.ServerUpdated += OnServerUpdated;
+
+            // 启动实时监控
+            try
+            {
+                _realTimeDiscoveryService.StartRealTimeMonitoring();
+                _logger.LogInformation("已启动SiLA2服务器实时监控");
+                UpdateStatus("实时监控已启动，等待服务器连接...", StatusType.Info);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "启动实时监控失败");
+                UpdateStatus("启动实时监控失败", StatusType.Error);
+            }
         }
 
         #region 侧边栏命令
@@ -135,41 +155,65 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         /// <summary>
-        /// 扫描在线服务器
+        /// 服务器上线事件处理
         /// </summary>
-        [RelayCommand]
-        private async Task ScanServersAsync()
+        private void OnServerOnline(ServerInfoViewModel server)
         {
-            _logger.LogInformation("开始扫描在线服务器");
-            UpdateStatus("正在扫描服务器...", StatusType.Info);
-
-            try
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                var servers = await _discoveryService.ScanServersAsync(TimeSpan.FromSeconds(3));
-
-                OnlineServers.Clear();
-                foreach (var server in servers)
+                // 检查是否已存在
+                var existing = OnlineServers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing == null)
                 {
                     // 设置特性选择变化的回调
                     server.OnFeatureSelectionChanged = OnFeatureSelectionChanged;
                     OnlineServers.Add(server);
+                    
+                    _logger.LogInformation($"服务器上线: {server.ServerName}");
+                    UpdateStatus($"服务器上线: {server.ServerName} ({OnlineServers.Count} 个在线)", StatusType.Success);
                 }
+            });
+        }
 
-                _logger.LogInformation($"扫描完成，发现 {servers.Count} 个服务器");
-                UpdateStatus($"发现 {servers.Count} 个服务器", StatusType.Success);
-
-                if (servers.Count == 0)
-                {
-                    MessageBox.Show("未发现任何SiLA2服务器\n\n请确保：\n1. 服务器正在运行\n2. 网络连接正常\n3. mDNS服务已启用",
-                        "扫描结果", MessageBoxButton.OK, MessageBoxImage.Information);
-                }
-            }
-            catch (Exception ex)
+        /// <summary>
+        /// 服务器下线事件处理
+        /// </summary>
+        private void OnServerOffline(ServerInfoViewModel server)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
             {
-                _logger.LogError(ex, "扫描服务器失败");
-                UpdateStatus("扫描失败", StatusType.Error);
-                MessageBox.Show($"扫描失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
-            }
+                var existing = OnlineServers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing != null)
+                {
+                    OnlineServers.Remove(existing);
+                    
+                    _logger.LogInformation($"服务器下线: {server.ServerName}");
+                    UpdateStatus($"服务器下线: {server.ServerName} ({OnlineServers.Count} 个在线)", StatusType.Warning);
+                }
+            });
+        }
+
+        /// <summary>
+        /// 服务器更新事件处理
+        /// </summary>
+        private void OnServerUpdated(ServerInfoViewModel server)
+        {
+            Application.Current.Dispatcher.Invoke(() =>
+            {
+                var existing = OnlineServers.FirstOrDefault(s => s.Uuid == server.Uuid);
+                if (existing != null)
+                {
+                    // 更新服务器信息
+                    existing.ServerName = server.ServerName;
+                    existing.IPAddress = server.IPAddress;
+                    existing.Port = server.Port;
+                    existing.ServerType = server.ServerType;
+                    existing.Description = server.Description;
+                    existing.LastSeen = server.LastSeen;
+                    
+                    _logger.LogInformation($"服务器更新: {server.ServerName}");
+                }
+            });
         }
 
         /// <summary>
@@ -251,32 +295,84 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         /// <summary>
-        /// 删除本地节点
+        /// 删除本地节点（不删除磁盘文件）
         /// </summary>
         [RelayCommand]
-        private void DeleteLocalNode()
+        private void DeleteLocalNode(object? parameter)
         {
-            // 查找选中的节点
-            var selectedNode = LocalNodes.FirstOrDefault(n => n.IsSelected);
-            if (selectedNode == null)
+            _logger.LogInformation($"DeleteLocalNode 命令被触发，参数类型: {parameter?.GetType().Name ?? "null"}");
+            
+            if (parameter is not LocalFeatureNodeViewModel node)
             {
-                MessageBox.Show("请先选择要删除的节点", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                _logger.LogWarning($"参数不是 LocalFeatureNodeViewModel 类型");
+                MessageBox.Show($"无效的节点\n参数类型: {parameter?.GetType().Name ?? "null"}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
                 return;
             }
 
+            _logger.LogInformation($"准备删除节点: {node.NodeName}");
+            
             var result = MessageBox.Show(
-                $"确定要删除节点 \"{selectedNode.NodeName}\" 及其所有文件吗？",
+                $"确定要从列表中删除节点 \"{node.NodeName}\" 及其所有文件吗？\n\n注意：磁盘上的文件不会被删除。",
                 "确认删除",
                 MessageBoxButton.YesNo,
                 MessageBoxImage.Question);
 
             if (result == MessageBoxResult.Yes)
             {
-                LocalNodes.Remove(selectedNode);
+                LocalNodes.Remove(node);
                 _persistenceService.Save(LocalNodes);
 
-                UpdateStatus($"已删除节点: {selectedNode.NodeName}", StatusType.Success);
-                _logger.LogInformation($"删除了本地节点: {selectedNode.NodeName}");
+                UpdateStatus($"已删除节点: {node.NodeName}", StatusType.Success);
+                _logger.LogInformation($"删除了本地节点: {node.NodeName}");
+            }
+        }
+
+        /// <summary>
+        /// 删除本地文件（不删除磁盘文件）
+        /// </summary>
+        [RelayCommand]
+        private void DeleteLocalFile(object? parameter)
+        {
+            _logger.LogInformation($"DeleteLocalFile 命令被触发，参数类型: {parameter?.GetType().Name ?? "null"}");
+            
+            if (parameter is not LocalFeatureFileViewModel file)
+            {
+                _logger.LogWarning($"参数不是 LocalFeatureFileViewModel 类型");
+                MessageBox.Show($"无效的文件\n参数类型: {parameter?.GetType().Name ?? "null"}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                return;
+            }
+
+            _logger.LogInformation($"准备删除文件: {file.FileName}");
+            
+            var result = MessageBox.Show(
+                $"确定要从列表中删除文件 \"{file.FileName}\" 吗？\n\n注意：磁盘上的文件不会被删除。",
+                "确认删除",
+                MessageBoxButton.YesNo,
+                MessageBoxImage.Question);
+
+            if (result == MessageBoxResult.Yes)
+            {
+                var parentNode = file.ParentNode;
+                if (parentNode != null)
+                {
+                    parentNode.Files.Remove(file);
+                    
+                    // 如果父节点没有文件了，删除父节点
+                    if (!parentNode.Files.Any())
+                    {
+                        LocalNodes.Remove(parentNode);
+                        _logger.LogInformation($"节点 {parentNode.NodeName} 已无文件，自动删除");
+                    }
+                    else
+                    {
+                        // 更新父节点的选择状态
+                        parentNode.UpdatePartialSelection();
+                    }
+                    
+                    _persistenceService.Save(LocalNodes);
+                    UpdateStatus($"已删除文件: {file.FileName}", StatusType.Success);
+                    _logger.LogInformation($"删除了本地文件: {file.FileName}");
+                }
             }
         }
 
@@ -349,7 +445,7 @@ namespace SilaGeneratorWpf.ViewModels
                     validationResult.SelectedFeatures,
                     projectInfo);
 
-                if (!clientCodeResult.Success)
+                if (!clientCodeResult.Success || string.IsNullOrEmpty(clientCodeResult.ClientCodePath))
                 {
                     AppendProcessLog($"❌ 客户端代码生成失败: {clientCodeResult.ErrorMessage}", isError: true);
                     UpdateStatus("客户端代码生成失败", StatusType.Error);
@@ -357,7 +453,7 @@ namespace SilaGeneratorWpf.ViewModels
                 }
 
                 // 步骤5：分析客户端代码并获取方法信息
-                var analysisResult = AnalyzeClientCode(clientCodeResult.ClientCodePath);
+                var analysisResult = AnalyzeClientCode(clientCodeResult.ClientCodePath!);
                 if (analysisResult == null)
                 {
                     return;
@@ -631,7 +727,7 @@ namespace SilaGeneratorWpf.ViewModels
                 Developer = deviceInfo.Developer,
                 Namespace = projectInfo.Namespace,
                 OutputPath = projectInfo.OutputPath,
-                ClientCodePath = clientCodeResult.ClientCodePath,
+                ClientCodePath = clientCodeResult.ClientCodePath ?? string.Empty,
                 Features = analysisResult.Features,
                 IsOnlineSource = validationResult.IsOnline,
                 ServerUuid = validationResult.IsOnline

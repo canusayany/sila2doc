@@ -311,7 +311,8 @@ namespace Sila2DriverGen.TestConsole
 
                 ConsoleHelper.PrintInfo($"服务器包含 {server.Features.Count} 个特性");
 
-                var serverData = discoveryService.GetServerData(server.Uuid);
+                // 优先从 ViewModel 缓存获取 ServerData
+                var serverData = server.ServerDataCache ?? discoveryService.GetServerData(server);
                 if (serverData == null)
                 {
                     ConsoleHelper.PrintError("无法获取服务器数据");

@@ -22,6 +22,23 @@ namespace SilaGeneratorWpf.Models
         private string _nodePath = string.Empty;
 
         /// <summary>
+        /// 节点显示文本（包含路径）
+        /// </summary>
+        public string DisplayText => string.IsNullOrEmpty(NodePath) 
+            ? NodeName 
+            : $"{NodeName} ({NodePath})";
+
+        partial void OnNodeNameChanged(string value)
+        {
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
+        partial void OnNodePathChanged(string value)
+        {
+            OnPropertyChanged(nameof(DisplayText));
+        }
+
+        /// <summary>
         /// 特性文件列表
         /// </summary>
         [ObservableProperty]

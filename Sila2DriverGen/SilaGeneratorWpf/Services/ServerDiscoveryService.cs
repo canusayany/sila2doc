@@ -140,7 +140,8 @@ namespace SilaGeneratorWpf.Services
                 Uuid = serverData.Config.Uuid,
                 ServerType = serverData.Info.Type ?? "Unknown",
                 Description = serverData.Info.Description ?? "",
-                LastSeen = DateTime.Now
+                LastSeen = DateTime.Now,
+                ServerDataCache = serverData  // 缓存 ServerData
             };
 
             // 直接加载特性
@@ -158,16 +159,27 @@ namespace SilaGeneratorWpf.Services
             {
                 try
                 {
-                    if (_serverDataCache.TryGetValue(server.Uuid, out var serverData))
+                    // 优先使用 ViewModel 中的缓存
+                    var serverData = server.ServerDataCache;
+                    
+                    // 如果 ViewModel 没有缓存，尝试从服务缓存中获取
+                    if (serverData == null && !_serverDataCache.TryGetValue(server.Uuid, out serverData))
+                    {
+                        _logger.LogWarning($"未找到服务器 {server.ServerName} 的 ServerData 缓存");
+                        return false;
+                    }
+                    
+                    if (serverData != null)
                     {
                         LoadFeatures(server, serverData);
                         return true;
                     }
+                    
                     return false;
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"Error loading features for server {server.ServerName}: {ex.Message}");
+                    _logger.LogError(ex, $"加载服务器特性失败: {server.ServerName}");
                     return false;
                 }
             });
@@ -316,8 +328,16 @@ namespace SilaGeneratorWpf.Services
                 var serverKey = SanitizeFolderName($"{server.ServerName}_{server.Uuid}");
                 var serverFeatures = new Dictionary<string, Feature>();
 
-                // 从缓存中获取ServerData
-                if (_serverDataCache.TryGetValue(server.Uuid, out var serverData))
+                // 优先从 ViewModel 中获取 ServerData 缓存
+                var serverData = server.ServerDataCache;
+                
+                // 如果 ViewModel 没有缓存，尝试从服务缓存中获取
+                if (serverData == null)
+                {
+                    _serverDataCache.TryGetValue(server.Uuid, out serverData);
+                }
+
+                if (serverData != null)
                 {
                     var featuresToInclude = selectedOnly 
                         ? server.Features.Where(f => f.IsSelected).ToList()
@@ -333,6 +353,10 @@ namespace SilaGeneratorWpf.Services
                         }
                     }
                 }
+                else
+                {
+                    _logger.LogWarning($"未找到服务器 {server.ServerName} ({server.Uuid}) 的 ServerData");
+                }
 
                 if (serverFeatures.Any())
                 {
@@ -344,11 +368,27 @@ namespace SilaGeneratorWpf.Services
         }
 
         /// <summary>
-        /// 根据 UUID 获取 ServerData
+        /// 根据 UUID 获取 ServerData（已弃用，建议使用 ServerInfoViewModel.ServerDataCache）
         /// </summary>
+        [Obsolete("建议直接使用 ServerInfoViewModel.ServerDataCache 属性")]
         public ServerData? GetServerData(Guid uuid)
         {
             return _serverDataCache.TryGetValue(uuid, out var serverData) ? serverData : null;
+        }
+        
+        /// <summary>
+        /// 根据 ServerInfoViewModel 获取 ServerData
+        /// </summary>
+        public ServerData? GetServerData(ServerInfoViewModel server)
+        {
+            // 优先返回 ViewModel 中的缓存
+            if (server.ServerDataCache != null)
+            {
+                return server.ServerDataCache;
+            }
+            
+            // 回退到服务缓存
+            return _serverDataCache.TryGetValue(server.Uuid, out var serverData) ? serverData : null;
         }
     }
 
