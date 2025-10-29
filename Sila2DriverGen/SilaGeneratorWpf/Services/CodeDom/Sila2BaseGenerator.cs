@@ -144,11 +144,11 @@ global using {clientCodeNamespace};");
             {
                 _deviceConnected = obj;
 
-                if (_deviceStateMachine.CurrentState != DeviceState_Common.IDLE)
+               if (_deviceConnected&&_deviceStateMachine.CurrentState != DeviceState_Common.IDLE)
                 {
                     _deviceStateMachine.HandleEvent(DeviceEvent_Common.Connected);
                 }
-                if (_deviceStateMachine.CurrentState != DeviceState_Common.DISCONNECTED)
+                if (!_deviceConnected&&_deviceStateMachine.CurrentState != DeviceState_Common.DISCONNECTED)
                 {
                     _deviceStateMachine.HandleEvent(DeviceEvent_Common.Disconnected);
                 }
