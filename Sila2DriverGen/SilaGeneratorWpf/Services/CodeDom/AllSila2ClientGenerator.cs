@@ -64,6 +64,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
             // 添加 DiscoverFactories 方法
             AddDiscoverFactoriesMethod(clientClass);
 
+            // 添加 CheckConnection 方法
+            AddCheckConnectionMethod(clientClass);
+
             // 添加所有平铺方法
             AddFlattenedMethods(clientClass, features);
 
@@ -87,6 +90,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 "System.Collections.Generic",
                 "System.Linq",
                 "System.Reflection",
+                "System.Threading.Tasks",
                 "Tecan.Sila2.Client",
                 "Tecan.Sila2.Client.ExecutionManagement",
                 "Tecan.Sila2.Discovery",
@@ -138,6 +142,31 @@ namespace SilaGeneratorWpf.Services.CodeDom
             {
                 Attributes = MemberAttributes.Private
             });
+            
+            // 添加连接检查相关字段
+            clientClass.Members.Add(new CodeMemberField(typeof(string), "_ip")
+            {
+                Attributes = MemberAttributes.Private,
+                InitExpression = new CodePrimitiveExpression("")
+            });
+            
+            clientClass.Members.Add(new CodeMemberField("int?", "_port")
+            {
+                Attributes = MemberAttributes.Private,
+                InitExpression = new CodePrimitiveExpression(null)
+            });
+            
+            clientClass.Members.Add(new CodeMemberField(typeof(bool), "_isNeedCheckConnection")
+            {
+                Attributes = MemberAttributes.Private,
+                InitExpression = new CodePrimitiveExpression(false)
+            });
+            
+            clientClass.Members.Add(new CodeMemberField(typeof(bool), "_isConnecting")
+            {
+                Attributes = MemberAttributes.Private,
+                InitExpression = new CodePrimitiveExpression(false)
+            });
         }
 
         /// <summary>
@@ -164,6 +193,29 @@ namespace SilaGeneratorWpf.Services.CodeDom
             constructor.Statements.Add(new CodeMethodInvokeExpression(
                 new CodeTypeReferenceExpression("Sila2Discovery"),
                 "StartRealTimeMonitoring"));
+
+            // 添加事件处理和异步心跳循环
+            constructor.Statements.Add(new CodeSnippetStatement(@"
+            Sila2Discovery.OnServerOffline += (s) =>
+            {
+                if (!string.IsNullOrEmpty(_ip) && !(_port is not null) && s.IPAddress == _ip && s.Port == _port)
+                {
+                    _isNeedCheckConnection = false;
+                    if (_isConnecting)
+                    {
+                        _isConnecting = false;
+                        OnConnectionStatusChanged?.Invoke(false);
+                    }
+                }
+            };
+            
+            Task.Run(async () => {
+                while (true)
+                {
+                    CheckConnection(null);
+                    await Task.Delay(3000);
+                }
+            });"));
 
             clientClass.Members.Add(constructor);
         }
@@ -317,6 +369,54 @@ namespace SilaGeneratorWpf.Services.CodeDom
             // return factories;
             method.Statements.Add(new CodeMethodReturnStatement(
                 new CodeVariableReferenceExpression("factories")));
+
+            clientClass.Members.Add(method);
+        }
+
+        /// <summary>
+        /// 添加 CheckConnection 方法
+        /// </summary>
+        private void AddCheckConnectionMethod(CodeTypeDeclaration clientClass)
+        {
+            var method = new CodeMemberMethod
+            {
+                Name = "CheckConnection",
+                Attributes = MemberAttributes.Private,
+                ReturnType = new CodeTypeReference("async Task")
+            };
+            method.Parameters.Add(new CodeParameterDeclarationExpression(typeof(object), "state"));
+
+            // 使用代码片段添加完整的方法体
+            method.Statements.Add(new CodeSnippetStatement(@"
+            if (!_isNeedCheckConnection) { return; }
+            try
+            {
+                string? name=GetServerName();
+                if (string.IsNullOrEmpty(name))
+                {
+                    if (_isConnecting)
+                    {
+                        _isConnecting = false;
+                        OnConnectionStatusChanged?.Invoke(false);
+                    }
+                    return;
+                }
+                SetServerName(name);
+
+                if ( _isConnecting)
+                {
+                    _isConnecting = false;
+                    OnConnectionStatusChanged?.Invoke(false);
+                }
+            }
+            catch (Exception)
+            {
+                if (_isConnecting)
+                {
+                    _isConnecting = false;
+                    OnConnectionStatusChanged?.Invoke(false);
+                }
+            }"));
 
             clientClass.Members.Add(method);
         }

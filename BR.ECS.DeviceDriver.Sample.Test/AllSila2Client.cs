@@ -15,12 +15,73 @@ internal class AllSila2Client
     //ServerDiscovery _discovery;
     IEnumerable<Tecan.Sila2.ServerData> _servers;
     Tecan.Sila2.ServerData _server;
+    private string _ip = "";
+    private int? _port = null;
+    private bool _isNeedCheckConnection = false;
+    private bool _isConnecting = false;
     public AllSila2Client()
     {
         _connector = new ServerConnector(new DiscoveryExecutionManager());
         // _discovery = new ServerDiscovery(_connector);
         Sila2Discovery.StartRealTimeMonitoring();
+
+        Sila2Discovery.OnServerOffline += (s) =>
+        {
+            if (!string.IsNullOrEmpty(_ip) && !(_port is not null) && s.IPAddress == _ip && s.Port == _port)
+            {
+                _isNeedCheckConnection = false;
+                if (_isConnecting)
+                {
+                    _isConnecting = false;
+                    OnConnectionStatusChanged?.Invoke(false);
+                }
+            }
+        };
+        Sila2Discovery.OnServerOnline += (s) =>
+        {
+            if (!string.IsNullOrEmpty(_ip) && !(_port is not null) && s.IPAddress == _ip && s.Port == _port)
+            {
+                _isNeedCheckConnection = true;
+            }
+        };
+        //使用定时器发送心跳检查连接情况
+        System.Threading.Timer timer = new System.Threading.Timer(CheckConnection, null, TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(3));
+        //开始
+
     }
+
+    private void CheckConnection(object? state)
+    {
+        //使用GetServerVersion();作为心跳
+        if (!_isNeedCheckConnection) { return; }
+
+        try
+        {
+            var ver = GetServerVersion();
+            if (string.IsNullOrEmpty(ver) && _isConnecting)
+            {
+                _isConnecting = false;
+                OnConnectionStatusChanged?.Invoke(false);
+            }
+            else if (!string.IsNullOrEmpty(ver) && !_isConnecting)
+            {
+                _isConnecting = true;
+                OnConnectionStatusChanged?.Invoke(true);
+            }
+
+
+        }
+        catch (Exception)
+        {
+           if(_isConnecting)
+           {
+            _isConnecting = false;
+            OnConnectionStatusChanged?.Invoke(false);
+           }
+        }
+
+    }
+
     public bool Connect(string ip, int port)
     {
         var info = Sila2Discovery.GetServer(ip, port, TimeSpan.FromSeconds(5));
@@ -30,20 +91,7 @@ internal class AllSila2Client
         }
         _server = _connector.Connect(info.IPAddress, info.Port, info.Uuid, info.TxtRecords);
         ClientProvider clientProvider = new ClientProvider(executionManagerFactory, DiscoverFactories());
-        Sila2Discovery.OnServerOffline += (s) =>
-        {
-            if (s.IPAddress == ip && s.Port == port)
-            {
-                OnConnectionStatusChanged?.Invoke(false);
-            }
-        };
-        Sila2Discovery.OnServerOnline += (s) =>
-        {
-            if (s.IPAddress == ip && s.Port == port)
-            {
-                OnConnectionStatusChanged?.Invoke(true);
-            }
-        };
+
 
         clientProvider.TryCreateClient<ITemperatureController>(_server, out temperatureController);//如果有多个特性就将所有特性拿出来
         return true;
@@ -60,6 +108,8 @@ internal class AllSila2Client
     {
         return temperatureController.CurrentTemperature;
     }
+    public virtual string GetServerVersion()
+    { return ""; }
     public void ControlTemperature(double targetTemperature)
     {
         var command = temperatureController.ControlTemperature(targetTemperature);
