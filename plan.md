@@ -1,7 +1,7 @@
 # SiLA2 D3驱动生成工具 - 项目文档
 
-**项目状态**：✅ **已完成并全面验证**  
-**最后更新**：2024-10-24 16:30  
+**项目状态**：✅ **已完成并持续优化**  
+**最后更新**：2024-10-28 (重构优化版)  
 **维护者**：Bioyond Team
 
 ---
@@ -725,6 +725,138 @@ A:
 
 ---
 
+## 九、重构与优化历史（2024-10-28）
+
+### 9.1 代码清理
+
+**删除废弃代码**：
+- ✅ 删除 `MethodGenerationInfo` 中的 `Obsolete` 属性 `Category` 和枚举 `MethodCategory`
+- ✅ 删除 `ClientCodeGenerator` 中的废弃方法 `CopyRequiredDllsToClientDirectory`
+- ✅ 删除 `D3DriverGeneratorService` 中的废弃方法 `CopyClientCode`
+- ✅ 删除不必要的TODO注释和向后兼容代码
+
+**影响范围**：
+- `Models/MethodGenerationInfo.cs` - 移除废弃的Category系统
+- `Services/ClientCodeGenerator.cs` - 移除废弃的DLL复制方法
+- `Services/D3DriverGeneratorService.cs` - 移除废弃的代码复制方法
+- `ViewModels/D3DriverViewModel.cs` - 移除向后兼容的Category设置代码
+
+### 9.2 日志系统优化
+
+**增强功能**：
+- ✅ 支持动态配置日志级别（Debug/Information/Warning/Error/Critical）
+- ✅ 添加结构化日志支持（使用占位符语法）
+- ✅ 增强日志格式：`{Timestamp} [{Level}] [{SourceContext}] {Message}`
+- ✅ 添加线程ID和机器名enricher
+- ✅ 添加日志文件大小限制（1GB）和自动滚动
+- ✅ 添加日志文件保留策略（30天）和自动清理功能
+- ✅ 支持Debug输出（调试模式）
+- ✅ 改进异常日志记录
+
+**新增方法**：
+```csharp
+LoggerService.Initialize(LogLevel minimumLevel)      // 支持配置最小级别
+LoggerService.SetMinimumLevel(LogLevel level)        // 动态调整级别
+LoggerService.GetMinimumLevel()                      // 获取当前级别
+LoggerService.CleanupOldLogs(int daysToKeep)         // 清理过期日志
+```
+
+**应用程序集成**：
+- ✅ 在 `App.xaml.cs` 的 `OnStartup` 中初始化日志系统
+- ✅ Debug模式使用Debug级别，Release模式使用Information级别
+- ✅ 启动时自动清理30天前的日志
+- ✅ 应用退出时正确关闭日志系统
+
+### 9.3 UI界面优化
+
+**配色方案改进**（采用Microsoft Fluent Design风格）：
+- ✅ 主色调：`#0078D4` (Azure Blue) - 主操作按钮
+- ✅ 辅助色：`#107C10` (Green) - 成功/打开操作
+- ✅ 辅助色：`#8764B8` (Purple) - 文件/DLL操作
+- ✅ 警告色：`#CA5010` (Orange) - 调整/配置操作
+
+**按钮优化**：
+- ✅ 统一按钮样式和hover效果
+- ✅ 简化按钮文字（去除"D3"和"本地特性"等冗余）
+- ✅ 增加字体权重（Medium/Bold）提升可读性
+- ✅ 改进Padding（12,8）提升点击区域
+- ✅ 添加禁用状态视觉反馈
+
+**改进效果对比**：
+
+| 原按钮 | 新按钮 | 改进点 |
+|--------|--------|--------|
+| 🔍 扫描服务器 | 🔍 扫描 | 更简洁，Fluent配色 |
+| 📁 添加本地特性 | 📁 添加 | 文字简化，紫色主题 |
+| ✨ 生成D3项目 | ✨ 成项目 | 去除冗余的"D3" |
+| 🔨 编译D3项目 | 🔨 编译项目 | 统一措辞 |
+| 🔧 调整方法特性 | 🔧 调整特性 | 简化表述 |
+
+### 9.4 TestConsole完善
+
+**新增测试**：
+- ✅ **LoggingTest.cs** - 日志系统测试
+  - 测试日志初始化
+  - 测试各级别日志写入（Trace/Debug/Info/Warning/Error/Critical）
+  - 测试结构化日志
+  - 测试异常日志
+  - 验证日志文件生成
+  - 测试日志清理功能
+
+- ✅ **CodeCleanupTest.cs** - 代码清理验证测试
+  - 检查是否还有Obsolete标记
+  - 验证废弃的Category属性已删除
+  - 验证废弃的MethodCategory枚举已删除
+  - 验证废弃的方法已删除
+
+**测试命令增强**：
+```bash
+dotnet run -- --logging     # 运行日志系统测试
+dotnet run -- --cleanup     # 运行代码清理验证测试
+dotnet run -- --performance # 运行性能测试
+dotnet run -- --auto        # 运行自动化测试
+```
+
+**文档更新**：
+- ✅ 更新 `README.md` 添加新测试命令说明
+- ✅ 记录测试覆盖范围和使用方法
+
+### 9.5 架构改进总结
+
+**代码质量提升**：
+- 移除废弃代码，减少技术债务
+- 统一代码风格和命名规范
+- 改进异常处理和错误日志
+
+**日志系统升级**：
+- 从简单文件日志升级到结构化日志
+- 支持动态配置和级别控制
+- 添加日志管理功能（清理、滚动）
+
+**用户体验优化**：
+- 采用现代化配色方案
+- 简化界面文字和布局
+- 提升按钮可用性和视觉反馈
+
+**测试覆盖增强**：
+- 增加单元测试覆盖面
+- 添加日志系统专项测试
+- 添加代码质量验证测试
+
+### 9.6 技术栈
+
+| 技术 | 版本 | 用途 |
+|------|------|------|
+| .NET | 8.0 | 框架 |
+| WPF | - | UI框架 |
+| Serilog | Latest | 日志库 |
+| Microsoft.Extensions.Logging | Latest | 日志抽象 |
+| CommunityToolkit.Mvvm | Latest | MVVM框架 |
+| Tecan.Sila2 | 4.4.1 | SiLA2客户端 |
+| Newtonsoft.Json | 13.0.3 | JSON序列化 |
+
+---
+
 ## 附录：修改的文件清单
 
 ### A. 核心服务
@@ -770,8 +902,23 @@ A:
 |------|------|
 | `Generator/Generators/DtoGenerator.cs` | DTO生成器（添加JsonConstructor特性） |
 
+### F. 重构优化文件（2024-10-28）
+
+| 文件 | 改动 |
+|------|------|
+| `Services/LoggerService.cs` | 升级日志系统，添加结构化日志和管理功能 |
+| `App.xaml.cs` | 添加日志初始化和清理 |
+| `Views/D3DriverView.xaml` | 优化UI按钮配色和文字 |
+| `Models/MethodGenerationInfo.cs` | 删除废弃的Category属性 |
+| `Services/ClientCodeGenerator.cs` | 删除废弃的DLL复制方法 |
+| `Services/D3DriverGeneratorService.cs` | 删除废弃的代码复制方法 |
+| `TestConsole/LoggingTest.cs` | 新增：日志系统测试 |
+| `TestConsole/CodeCleanupTest.cs` | 新增：代码清理验证测试 |
+| `TestConsole/Program.cs` | 添加新测试命令 |
+| `TestConsole/README.md` | 更新测试文档 |
+
 ---
 
-**文档版本**：v2.0  
-**生成时间**：2024-10-24 16:30  
-**适用版本**：SiLA2 D3驱动生成工具 v1.0
+**文档版本**：v2.1  
+**生成时间**：2024-10-28  
+**适用版本**：SiLA2 D3驱动生成工具 v1.1（重构优化版）
