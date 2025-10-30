@@ -64,6 +64,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
             // 添加 DiscoverFactories 方法
             AddDiscoverFactoriesMethod(clientClass);
 
+            // 添加 TestConnection 方法
+            AddTestConnectionMethod(clientClass);
+
             // 添加 CheckConnection 方法
             AddCheckConnectionMethod(clientClass);
 
@@ -179,11 +182,9 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 Attributes = MemberAttributes.Public
             };
 
-            // _connector = new ServerConnector(new DiscoveryExecutionManager());
-            constructor.Statements.Add(new CodeAssignStatement(
-                new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_connector"),
-                new CodeObjectCreateExpression("ServerConnector",
-                    new CodeObjectCreateExpression("DiscoveryExecutionManager"))));
+            // this._connector = new ServerConnector(new DiscoveryExecutionManager());
+            constructor.Statements.Add(new CodeSnippetStatement(@"
+            this._connector = new ServerConnector(new DiscoveryExecutionManager());"));
 
             // executionManagerFactory = new ExecutionManagerFactory(new IClientRequestInterceptor[] { new LockingInterceptor(null) });
             constructor.Statements.Add(new CodeSnippetStatement(
@@ -213,7 +214,7 @@ namespace SilaGeneratorWpf.Services.CodeDom
                 while (true)
                 {
                     CheckConnection(null);
-                    await Task.Delay(3000);
+                    await Task.Delay(1000);
                 }
             });"));
 
@@ -265,6 +266,15 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     new CodePropertyReferenceExpression(new CodeVariableReferenceExpression("info"), "Uuid"),
                     new CodePropertyReferenceExpression(new CodeVariableReferenceExpression("info"), "TxtRecords"))));
 
+            // 保存 IP 和端口供后续使用
+            method.Statements.Add(new CodeAssignStatement(
+                new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_ip"),
+                new CodeArgumentReferenceExpression("ip")));
+            
+            method.Statements.Add(new CodeAssignStatement(
+                new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_port"),
+                new CodeArgumentReferenceExpression("port")));
+
             // ClientProvider clientProvider = new ClientProvider(...);
             method.Statements.Add(new CodeVariableDeclarationStatement("ClientProvider", "clientProvider",
                 new CodeObjectCreateExpression("ClientProvider",
@@ -281,8 +291,14 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     $"            clientProvider.TryCreateClient<Sila2Client.{feature.InterfaceName}>(_server, out {fieldName});"));
             }
 
-            // return true;
-            method.Statements.Add(new CodeMethodReturnStatement(new CodePrimitiveExpression(true)));
+            // _isNeedCheckConnection = true;
+            method.Statements.Add(new CodeAssignStatement(
+                new CodeFieldReferenceExpression(new CodeThisReferenceExpression(), "_isNeedCheckConnection"),
+                new CodePrimitiveExpression(true)));
+
+            // return TestConnection();
+            method.Statements.Add(new CodeMethodReturnStatement(
+                new CodeMethodInvokeExpression(null, "TestConnection")));
 
             clientClass.Members.Add(method);
         }
@@ -374,24 +390,22 @@ namespace SilaGeneratorWpf.Services.CodeDom
         }
 
         /// <summary>
-        /// 添加 CheckConnection 方法
+        /// 添加 TestConnection 方法
         /// </summary>
-        private void AddCheckConnectionMethod(CodeTypeDeclaration clientClass)
+        private void AddTestConnectionMethod(CodeTypeDeclaration clientClass)
         {
             var method = new CodeMemberMethod
             {
-                Name = "CheckConnection",
+                Name = "TestConnection",
                 Attributes = MemberAttributes.Private,
-                ReturnType = new CodeTypeReference("async Task")
+                ReturnType = new CodeTypeReference(typeof(bool))
             };
-            method.Parameters.Add(new CodeParameterDeclarationExpression(typeof(object), "state"));
 
             // 使用代码片段添加完整的方法体
             method.Statements.Add(new CodeSnippetStatement(@"
-            if (!_isNeedCheckConnection) { return; }
             try
             {
-                string? name=GetServerName();
+                string? name = GetServerName();
                 if (string.IsNullOrEmpty(name))
                 {
                     if (_isConnecting)
@@ -399,14 +413,40 @@ namespace SilaGeneratorWpf.Services.CodeDom
                         _isConnecting = false;
                         OnConnectionStatusChanged?.Invoke(false);
                     }
-                    return;
+                    return false;
                 }
                 SetServerName(name);
+                return true;
+            }
+            catch (Exception)
+            {
+                throw new Exception(""连接测试不通过"");
+            }"));
 
-                if ( _isConnecting)
+            clientClass.Members.Add(method);
+        }
+
+        /// <summary>
+        /// 添加 CheckConnection 方法
+        /// </summary>
+        private void AddCheckConnectionMethod(CodeTypeDeclaration clientClass)
+        {
+            // 使用 CodeSnippetTypeMember 来完全控制方法生成，确保 async 关键字正确添加
+            var methodSnippet = new CodeSnippetTypeMember(@"
+        private async Task CheckConnection(object state)
+        {
+            if (!_isNeedCheckConnection) { return; }
+            try
+            {
+                bool flowControl = TestConnection();
+                if (!flowControl)
                 {
-                    _isConnecting = false;
-                    OnConnectionStatusChanged?.Invoke(false);
+                    return;
+                }
+                if (!_isConnecting)
+                {
+                    _isConnecting = true;
+                    OnConnectionStatusChanged?.Invoke(true);
                 }
             }
             catch (Exception)
@@ -416,9 +456,11 @@ namespace SilaGeneratorWpf.Services.CodeDom
                     _isConnecting = false;
                     OnConnectionStatusChanged?.Invoke(false);
                 }
-            }"));
+                await Task.Delay(2000);
+            }
+        }");
 
-            clientClass.Members.Add(method);
+            clientClass.Members.Add(methodSnippet);
         }
 
         /// <summary>
