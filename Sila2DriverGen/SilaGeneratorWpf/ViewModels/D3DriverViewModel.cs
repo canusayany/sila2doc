@@ -1,5 +1,7 @@
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using BR.ECS.Executor.Device.Infrastructure;
+using BR.ECS.Executor.Device.DriverPackager;
 using Microsoft.Extensions.Logging;
 using SilaGeneratorWpf.Models;
 using SilaGeneratorWpf.Services;
@@ -65,6 +67,9 @@ namespace SilaGeneratorWpf.ViewModels
 
         [ObservableProperty]
         private bool _canCompile = false;
+
+        [ObservableProperty]
+        private bool _canPackage = false;
 
         /// <summary>
         /// 项目信息文本
@@ -1535,6 +1540,9 @@ namespace SilaGeneratorWpf.ViewModels
                 UpdateStatus("编译成功", StatusType.Success);
                 _logger.LogInformation("D3项目编译成功");
 
+                // 启用打包功能
+                CanPackage = true;
+
                 // 更新项目信息
                 ProjectInfoText = $"项目：{_currentConfig.Brand}_{_currentConfig.Model}\n" +
                                   $"路径：{CurrentProjectPath}\n" +
@@ -1728,6 +1736,435 @@ namespace SilaGeneratorWpf.ViewModels
         }
 
         #endregion
+
+        #region 打包驱动
+
+        /// <summary>
+        /// 打包驱动
+        /// </summary>
+        [RelayCommand]
+        private async Task PackageDriverAsync()
+        {
+            try
+            {
+                AppendProcessLog("========== 开始打包驱动 ==========");
+                _logger.LogInformation("开始打包驱动");
+
+                // 验证DLL路径
+                if (string.IsNullOrEmpty(CurrentDllPath) || !Directory.Exists(CurrentDllPath))
+                {
+                    AppendProcessLog("❌ DLL目录不存在，请先编译项目", isError: true);
+                    MessageBox.Show("请先编译项目", "提示", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    return;
+                }
+
+                if (_currentConfig == null)
+                {
+                    AppendProcessLog("❌ 配置信息不存在", isError: true);
+                    MessageBox.Show("配置信息不存在，请重新生成项目", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // 步骤1：生成描述文件
+                AppendProcessLog("▶ 生成设备描述文件...");
+                var descriptionResult = await GenerateDeviceDescriptionAsync(CurrentDllPath);
+                if (!descriptionResult.Success)
+                {
+                    AppendProcessLog($"❌ 生成描述文件失败: {descriptionResult.Message}", isError: true);
+                    MessageBox.Show($"生成描述文件失败：\n{descriptionResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog($"✓ 描述文件：{descriptionResult.JsonFilePath}");
+                AppendProcessLog($"✓ 清单文件：{descriptionResult.ManifestFilePath}");
+
+                // 步骤2：写入依赖信息到manifest.json
+                AppendProcessLog("▶ 写入依赖信息到manifest.json...");
+                var manifestResult = await WriteDependenciesToManifestAsync(descriptionResult.ManifestFilePath!);
+                if (!manifestResult.Success)
+                {
+                    AppendProcessLog($"❌ 写入依赖信息失败: {manifestResult.Message}", isError: true);
+                    MessageBox.Show($"写入依赖信息失败：\n{manifestResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog("✓ 依赖信息已写入");
+
+                // 步骤3：让用户选择输出目录
+                AppendProcessLog("▶ 请选择打包输出目录...");
+                var outputPath = SelectPackageOutputPath();
+                if (string.IsNullOrEmpty(outputPath))
+                {
+                    AppendProcessLog("用户取消了打包");
+                    return;
+                }
+
+                AppendProcessLog($"  输出目录：{outputPath}");
+
+                // 步骤4：调用打包服务
+                AppendProcessLog("▶ 开始打包驱动...");
+                UpdateStatus("正在打包驱动...", StatusType.Info);
+
+                var packageResult = await PackageDriverAsync(
+                    CurrentDllPath,
+                    _currentConfig.Namespace,
+                    outputPath,
+                    GetDriverVersion(CurrentDllPath));
+
+                if (!packageResult.Success)
+                {
+                    AppendProcessLog($"❌ 打包失败: {packageResult.Message}", isError: true);
+                    UpdateStatus("打包失败", StatusType.Error);
+                    MessageBox.Show($"打包失败：\n{packageResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog("✅ 驱动打包完成");
+                AppendProcessLog("========== 打包完成 ==========");
+                UpdateStatus("打包成功", StatusType.Success);
+
+                // 提示完成
+                var dialogResult = MessageBox.Show(
+                    $"驱动打包完成！\n\n输出目录: {outputPath}\n\n是否打开输出目录？",
+                    "打包成功",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+
+                if (dialogResult == MessageBoxResult.Yes)
+                {
+                    OpenDirectory(outputPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "打包驱动失败");
+                AppendProcessLog($"❌ 发生异常: {ex.Message}", isError: true);
+                UpdateStatus("打包失败", StatusType.Error);
+                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}",
+                    "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 测试固定目录的驱动打包流程
+        /// </summary>
+        [RelayCommand]
+        private async Task TestPackageDriverAsync()
+        {
+            const string testDirectory = @"C:\Users\yupeng.zhang\AppData\Local\Temp\Sila2D3Gen\tt_fsf_20251029_155452\BR.ECS.DeviceDriver.SiLA2TemperatureServer.tt_fsf\bin\Release";
+
+            try
+            {
+                AppendProcessLog("========== 开始测试打包 ==========");
+                AppendProcessLog($"▶ 测试目录：{testDirectory}");
+
+                if (!Directory.Exists(testDirectory))
+                {
+                    AppendProcessLog("❌ 测试目录不存在", isError: true);
+                    MessageBox.Show($"测试目录不存在：\n{testDirectory}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                // 生成描述文件
+                AppendProcessLog("▶ 生成测试描述文件...");
+                var descriptionResult = await GenerateDeviceDescriptionAsync(testDirectory);
+                if (!descriptionResult.Success || string.IsNullOrEmpty(descriptionResult.ManifestFilePath))
+                {
+                    AppendProcessLog($"❌ 生成描述文件失败: {descriptionResult.Message}", isError: true);
+                    MessageBox.Show($"生成描述文件失败：\n{descriptionResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog($"✓ 描述文件：{descriptionResult.JsonFilePath}");
+                AppendProcessLog($"✓ 清单文件：{descriptionResult.ManifestFilePath}");
+
+                // 写入依赖信息
+                AppendProcessLog("▶ 写入依赖信息到测试manifest.json...");
+                var manifestResult = await WriteDependenciesToManifestAsync(descriptionResult.ManifestFilePath);
+                if (!manifestResult.Success)
+                {
+                    AppendProcessLog($"❌ 写入依赖信息失败: {manifestResult.Message}", isError: true);
+                    MessageBox.Show($"写入依赖信息失败：\n{manifestResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog("✓ 测试manifest依赖信息已写入");
+
+                // 选择输出目录
+                AppendProcessLog("▶ 请选择测试打包输出目录...");
+                var outputPath = SelectPackageOutputPath();
+                if (string.IsNullOrEmpty(outputPath))
+                {
+                    AppendProcessLog("测试打包已取消");
+                    return;
+                }
+
+                AppendProcessLog($"  输出目录：{outputPath}");
+
+                // 打包
+                AppendProcessLog("▶ 开始测试打包...");
+                UpdateStatus("正在执行测试打包...", StatusType.Info);
+
+                var driverName = descriptionResult.DllName ?? "TestDriver";
+                var version = GetDriverVersion(testDirectory);
+
+                var packageResult = await PackageDriverAsync(
+                    testDirectory,
+                    driverName,
+                    outputPath,
+                    version);
+
+                if (!packageResult.Success)
+                {
+                    AppendProcessLog($"❌ 测试打包失败: {packageResult.Message}", isError: true);
+                    UpdateStatus("测试打包失败", StatusType.Error);
+                    MessageBox.Show($"测试打包失败：\n{packageResult.Message}", "错误",
+                        MessageBoxButton.OK, MessageBoxImage.Error);
+                    return;
+                }
+
+                AppendProcessLog("✅ 测试驱动打包完成");
+                AppendProcessLog("========== 测试打包完成 ==========");
+                UpdateStatus("测试打包成功", StatusType.Success);
+
+                var dialogResult = MessageBox.Show(
+                    $"测试打包完成！\n\n输出目录: {outputPath}\n\n是否打开输出目录？",
+                    "测试打包成功",
+                    MessageBoxButton.YesNo,
+                    MessageBoxImage.Information);
+
+                if (dialogResult == MessageBoxResult.Yes)
+                {
+                    OpenDirectory(outputPath);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "测试打包失败");
+                AppendProcessLog($"❌ 测试打包异常: {ex.Message}", isError: true);
+                UpdateStatus("测试打包失败", StatusType.Error);
+                MessageBox.Show($"发生未预期的错误:\n\n{ex.Message}\n\n{ex.StackTrace}",
+                    "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+            }
+        }
+
+        /// <summary>
+        /// 生成设备描述文件
+        /// </summary>
+        private async Task<DeviceDescriptionResult> GenerateDeviceDescriptionAsync(string dllPath)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    // 调用BR.ECS.Executor.Device.Infrastructure.DeviceOperationTool.CreateDeviceDescriptionJsonFileAndDefaultManifest
+                    DeviceOperationTool.CreateDeviceDescriptionJsonFileAndDefaultManifest(dllPath);
+
+                    // 查找生成的文件
+                    var dllFiles = Directory.GetFiles(dllPath, "*.dll", SearchOption.TopDirectoryOnly);
+                    var mainDll = dllFiles.FirstOrDefault(f => !f.Contains(".manifest.") && Path.GetFileName(f).StartsWith(_currentConfig?.Namespace ?? ""));
+
+                    if (mainDll == null)
+                    {
+                        return new DeviceDescriptionResult
+                        {
+                            Success = false,
+                            Message = "找不到主DLL文件"
+                        };
+                    }
+
+                    var dllName = Path.GetFileNameWithoutExtension(mainDll);
+                    var jsonFile = Path.Combine(dllPath, $"{dllName}.json");
+                    var manifestFile = Path.Combine(dllPath, $"{dllName}.manifest.json");
+
+                    if (!File.Exists(jsonFile) || !File.Exists(manifestFile))
+                    {
+                        return new DeviceDescriptionResult
+                        {
+                            Success = false,
+                            Message = "描述文件生成失败"
+                        };
+                    }
+
+                    return new DeviceDescriptionResult
+                    {
+                        Success = true,
+                        JsonFilePath = jsonFile,
+                        ManifestFilePath = manifestFile,
+                        DllName = dllName
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "生成设备描述文件失败");
+                    return new DeviceDescriptionResult
+                    {
+                        Success = false,
+                        Message = ex.Message
+                    };
+                }
+            });
+        }
+
+        /// <summary>
+        /// 写入依赖信息到manifest.json
+        /// </summary>
+        private async Task<OperationResult> WriteDependenciesToManifestAsync(string manifestFilePath)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    var dependencies = new[]
+                    {
+                        new { Key = "BR.PC.Device.Sila2Discovery.dll", Value = "" },
+                        new { Key = "Common.Logging.Core.dll", Value = "" },
+                        new { Key = "Common.Logging.dll", Value = "" },
+                        new { Key = "Grpc.Core.Api.dll", Value = "" },
+                        new { Key = "Grpc.Net.Client.dll", Value = "" },
+                        new { Key = "Grpc.Net.ClientFactory.dll", Value = "" },
+                        new { Key = "Grpc.Net.Common.dll", Value = "" },
+                        new { Key = "Makaretu.Dns.dll", Value = "" },
+                        new { Key = "Makaretu.Dns.Multicast.New.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.DependencyInjection.Abstractions.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.DependencyInjection.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.Http.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.Logging.Abstractions.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.Logging.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.Options.dll", Value = "" },
+                        new { Key = "Microsoft.Extensions.Primitives.dll", Value = "" },
+                        new { Key = "Newtonsoft.Json.dll", Value = "" },
+                        new { Key = "protobuf-net.Core.dll", Value = "" },
+                        new { Key = "protobuf-net.dll", Value = "" },
+                        new { Key = "System.ComponentModel.Composition.dll", Value = "" },
+                        new { Key = "System.Diagnostics.DiagnosticSource.dll", Value = "" },
+                        new { Key = "System.Reactive.dll", Value = "" },
+                        new { Key = "System.Security.Permissions.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.Annotations.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.Cancellation.Client.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.Client.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.Contracts.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.DynamicClient.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.Locking.Client.dll", Value = "" },
+                        new { Key = "Tecan.Sila2.NetCore.dll", Value = "" },
+                        new { Key = "Zeroconf.dll", Value = "" }
+                    };
+
+                    // 将依赖信息写入manifest.json（格式化为易读的JSON）
+                    var json = Newtonsoft.Json.JsonConvert.SerializeObject(
+                        dependencies.Select(d => new Dictionary<string, string> { { d.Key, d.Value } }).ToArray(),
+                        Newtonsoft.Json.Formatting.Indented);
+
+                    File.WriteAllText(manifestFilePath, json, System.Text.Encoding.UTF8);
+
+                    return new OperationResult { Success = true };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "写入依赖信息失败");
+                    return new OperationResult
+                    {
+                        Success = false,
+                        Message = ex.Message
+                    };
+                }
+            });
+        }
+
+        /// <summary>
+        /// 选择打包输出路径
+        /// </summary>
+        private string? SelectPackageOutputPath()
+        {
+            var dialog = new System.Windows.Forms.FolderBrowserDialog
+            {
+                Description = "选择驱动打包输出目录",
+                ShowNewFolderButton = true
+            };
+
+            if (dialog.ShowDialog() != System.Windows.Forms.DialogResult.OK)
+            {
+                return null;
+            }
+
+            return dialog.SelectedPath;
+        }
+
+        /// <summary>
+        /// 获取驱动版本
+        /// </summary>
+        private string GetDriverVersion(string dllPath)
+        {
+            try
+            {
+                var dllFiles = Directory.GetFiles(dllPath, "*.dll", SearchOption.TopDirectoryOnly);
+                var mainDll = dllFiles.FirstOrDefault(f => Path.GetFileName(f).StartsWith(_currentConfig?.Namespace ?? ""));
+
+                if (mainDll != null && File.Exists(mainDll))
+                {
+                    var versionInfo = System.Diagnostics.FileVersionInfo.GetVersionInfo(mainDll);
+                    return versionInfo.FileVersion ?? "1.0.0.0";
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "获取驱动版本失败，使用默认版本");
+            }
+
+            return "1.0.0.0";
+        }
+
+        /// <summary>
+        /// 打包驱动
+        /// </summary>
+        private async Task<OperationResult> PackageDriverAsync(
+            string sourceDirectory,
+            string driverName,
+            string outputPath,
+            string version)
+        {
+            return await Task.Run(() =>
+            {
+                try
+                {
+                    var driverPackageManager = new DriverPackageManager();
+                    var result = driverPackageManager.PackageSingleDriver(sourceDirectory, driverName, outputPath, version);
+
+                    if (result == null)
+                    {
+                        return new OperationResult
+                        {
+                            Success = false,
+                            Message = "打包返回null"
+                        };
+                    }
+
+                    return new OperationResult
+                    {
+                        Success = result.Success,
+                        Message = result.Message
+                    };
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "打包驱动失败");
+                    return new OperationResult
+                    {
+                        Success = false,
+                        Message = ex.Message
+                    };
+                }
+            });
+        }
+
+        #endregion
     }
 
     /// <summary>
@@ -1785,6 +2222,27 @@ namespace SilaGeneratorWpf.ViewModels
         public string? ServerIp { get; set; }
         public int? ServerPort { get; set; }
         public string ErrorMessage { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 设备描述文件生成结果
+    /// </summary>
+    internal class DeviceDescriptionResult
+    {
+        public bool Success { get; set; }
+        public string? JsonFilePath { get; set; }
+        public string? ManifestFilePath { get; set; }
+        public string? DllName { get; set; }
+        public string Message { get; set; } = string.Empty;
+    }
+
+    /// <summary>
+    /// 操作结果
+    /// </summary>
+    internal class OperationResult
+    {
+        public bool Success { get; set; }
+        public string Message { get; set; } = string.Empty;
     }
 
     #endregion

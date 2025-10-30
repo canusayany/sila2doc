@@ -16,6 +16,7 @@
     </ItemGroup>
 
     <ItemGroup>
+        <PackageReference Include="Autofac" Version="8.4.0" />
         <PackageReference Include="CommunityToolkit.Mvvm" Version="8.2.2" />
         <PackageReference Include="CommandLineParser" Version="2.8.0" />
         <PackageReference Include="Microsoft.Xaml.Behaviors.Wpf" Version="1.1.77" />
@@ -54,8 +55,17 @@
     
     <!-- 引用 reflib 中的依赖库 -->
     <ItemGroup>
+        <Reference Include="BR.ECS.Executor.Device.Domain.Contracts">
+          <HintPath>reflib\BR.ECS.Executor.Device.Domain.Contracts.dll</HintPath>
+        </Reference>
+        <Reference Include="BR.ECS.Executor.Device.Domain.Share">
+          <HintPath>reflib\BR.ECS.Executor.Device.Domain.Share.dll</HintPath>
+        </Reference>
         <Reference Include="BR.ECS.Executor.Device.DriverPackager">
           <HintPath>reflib\BR.ECS.Executor.Device.DriverPackager.dll</HintPath>
+        </Reference>
+        <Reference Include="BR.ECS.Executor.Device.Infrastructure">
+          <HintPath>reflib\BR.ECS.Executor.Device.Infrastructure.dll</HintPath>
         </Reference>
         <Reference Include="BR.PC.Device.Sila2Discovery">
             <HintPath>reflib\BR.PC.Device.Sila2Discovery.dll</HintPath>

@@ -496,6 +496,52 @@
                         </Style>
                     </Button.Style>
                 </Button>
+
+                <Button
+                    Margin="5"
+                    Padding="12,8"
+                    Background="#00796B"
+                    BorderThickness="0"
+                    Command="{Binding PackageDriverCommand}"
+                    Content="📦 打包驱动"
+                    Foreground="White"
+                    FontWeight="Bold"
+                    Visibility="{Binding CanPackage, Converter={StaticResource BoolToVisibilityConverter}}"
+                    ToolTip="生成描述文件并打包驱动">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#00796B"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#00695C"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
+
+                <Button
+                    Margin="5"
+                    Padding="12,8"
+                    Background="#5C6BC0"
+                    BorderThickness="0"
+                    Command="{Binding TestPackageDriverCommand}"
+                    Content="🧪 测试打包"
+                    Foreground="White"
+                    FontWeight="Medium"
+                    Visibility="Collapsed"
+                    ToolTip="使用固定路径测试生成描述文件与打包流程">
+                    <Button.Style>
+                        <Style TargetType="Button">
+                            <Setter Property="Background" Value="#5C6BC0"/>
+                            <Style.Triggers>
+                                <Trigger Property="IsMouseOver" Value="True">
+                                    <Setter Property="Background" Value="#3F51B5"/>
+                                </Trigger>
+                            </Style.Triggers>
+                        </Style>
+                    </Button.Style>
+                </Button>
             </WrapPanel>
         </Grid>
     </Grid>
